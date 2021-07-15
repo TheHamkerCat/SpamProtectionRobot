@@ -1,3 +1,4 @@
 pyrogram
 TgCrypto
 python-arq
+pykeyboard

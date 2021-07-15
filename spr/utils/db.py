@@ -1,10 +1,11 @@
 # Ignore repetitions
 
 from json import dumps, loads
+from time import time
 
 from spr import conn
 
-c = conn.curor()
+c = conn.cursor()
 
 c.execute(
     """
@@ -26,20 +27,32 @@ c.execute(
         """
 )
 
-# Reports in SPAM/NSFW log channel
+# For reports in SPAM log channel
 c.execute(
     """
         CREATE
         TABLE
         IF NOT EXISTS
         reports
-        (message_id, upvoters, downvoters)
+        (message_id, upvote, downvote, user_id)
         """
 )
 
+# For false NSFW reports
+c.execute(
+        """
+        CREATE
+        TABLE
+        IF NOT EXISTS
+        ignored_media
+        (file_id, time)
+        """
+        )
 
 def user_exists(user_id: int) -> bool:
-    """CHECK IF A USER EXISTS IN DB"""
+    """
+    CHECK IF A USER EXISTS IN DB
+    """
     return c.execute(
         """
             SELECT *
@@ -51,11 +64,13 @@ def user_exists(user_id: int) -> bool:
 
 
 def chat_exists(chat_id: int) -> bool:
-    """CHECK IF A CHAT EXISTS IN DB"""
+    """
+    CHECK IF A CHAT EXISTS IN DB
+    """
     return c.execute(
         """
             SELECT *
-            FROM users
+            FROM chats
             WHERE chat_id=?
             """,
         (chat_id,),
@@ -63,7 +78,9 @@ def chat_exists(chat_id: int) -> bool:
 
 
 def add_user(user_id: int):
-    """ADD A USER IN DB"""
+    """
+    ADD A USER IN DB
+    """
     c.execute(
         """
             INSERT
@@ -76,7 +93,9 @@ def add_user(user_id: int):
 
 
 def add_chat(chat_id: int):
-    """ADD A CHAT IN DB"""
+    """
+    ADD A CHAT IN DB
+    """
     c.execute(
         """
             INSERT
@@ -94,7 +113,9 @@ def add_chat(chat_id: int):
 
 
 def update_spam_data(user_id: int, spam_value: float):
-    """UPDATE SPAM DATA OF A USER"""
+    """
+    UPDATE SPAM DATA OF A USER
+    """
     data = c.execute(
         """
             SELECT spam_data
@@ -123,17 +144,35 @@ def update_spam_data(user_id: int, spam_value: float):
     return conn.commit()
 
 
+def get_user_trust(user_id: int) -> float:
+    """
+    GET TRUST PREDICTION OF A USER
+    """
+    data = c.execute(
+        """
+            SELECT spam_data
+            FROM users
+            WHERE user_id=?
+            """,
+        (user_id,),
+    ).fetchone()[0]
+    data = loads(data)
+    return 100 if not data else round((100 - (sum(data) / len(data))), 4)
+
+
 # Each nsfw media user sends, adds 2 spam count and
 # decrements his reputation by 10
 
 
 def increment_nsfw_count(user_id: int):
-    """INCREMENT NSFW MESSAGES COUNT OF A USER"""
+    """
+    INCREMENT NSFW MESSAGES COUNT OF A USER
+    """
     c.execute(
         """
             UPDATE users
             SET nsfw_count = nsfw_count + 1,
-                reputation = reputation - 1
+                reputation = reputation - 10
             WHERE user_id=?
             """,
         (user_id,),
@@ -142,8 +181,38 @@ def increment_nsfw_count(user_id: int):
     return [update_spam_data(user_id, 100) for _ in range(2)]
 
 
+def get_nsfw_count(user_id: int):
+    """
+    GET NSFW MESSAGES COUNT OF A USER
+    """
+    return c.execute(
+        """
+            SELECT nsfw_count
+            FROM users
+            WHERE user_id=?
+            """,
+        (user_id,),
+    ).fetchone()[0]
+
+
+def get_reputation(user_id: int) -> int:
+    """
+    GET REPUTATION OF A USER
+    """
+    return c.execute(
+        """
+            SELECT reputation
+            FROM users
+            WHERE user_id=?
+            """,
+        (user_id,),
+    ).fetchone()[0]
+
+
 def increment_reputation(user_id: int):
-    """INCREMENT REPUTATION OF A USER"""
+    """
+    INCREMENT REPUTATION OF A USER
+    """
     c.execute(
         """
             UPDATE users
@@ -156,7 +225,9 @@ def increment_reputation(user_id: int):
 
 
 def decrement_reputation(user_id: int):
-    """DECREMENT REPUTATION OF A USER"""
+    """
+    DECREMENT REPUTATION OF A USER
+    """
     c.execute(
         """
             UPDATE users
@@ -169,7 +240,9 @@ def decrement_reputation(user_id: int):
 
 
 def blacklist_user(user_id: int):
-    """BLACKLIST A USER"""
+    """
+    BLACKLIST A USER
+    """
     c.execute(
         """
             UPDATE users
@@ -182,7 +255,9 @@ def blacklist_user(user_id: int):
 
 
 def blacklist_chat(chat_id: int):
-    """BLACKLIST A CHAT"""
+    """
+    BLACKLIST A CHAT
+    """
     c.execute(
         """
             UPDATE chats
@@ -195,7 +270,9 @@ def blacklist_chat(chat_id: int):
 
 
 def whitelist_user(user_id: int):
-    """WHITELIST A USER"""
+    """
+    WHITELIST A USER
+    """
     c.execute(
         """
             UPDATE users
@@ -208,7 +285,9 @@ def whitelist_user(user_id: int):
 
 
 def whitelist_chat(chat_id: int):
-    """WHITELIST A CHAT"""
+    """
+    WHITELIST A CHAT
+    """
     c.execute(
         """
             UPDATE chats
@@ -221,7 +300,9 @@ def whitelist_chat(chat_id: int):
 
 
 def is_user_blacklisted(user_id: int) -> bool:
-    """CHECK IF A USER IS BLACKLISTED"""
+    """
+    CHECK IF A USER IS BLACKLISTED
+    """
     return bool(
         c.execute(
             """
@@ -235,7 +316,9 @@ def is_user_blacklisted(user_id: int) -> bool:
 
 
 def is_chat_blacklisted(chat_id: int) -> bool:
-    """CHECK IF A CHAT IS BLACKLISTED"""
+    """
+    CHECK IF A CHAT IS BLACKLISTED
+    """
     return bool(
         c.execute(
             """
@@ -249,7 +332,9 @@ def is_chat_blacklisted(chat_id: int) -> bool:
 
 
 def is_spam_enabled(chat_id: int) -> bool:
-    """CHECK IF SPAM PROTECTION IS ENABLED IN A CHAT"""
+    """
+    CHECK IF SPAM PROTECTION IS ENABLED IN A CHAT
+    """
     return bool(
         c.execute(
             """
@@ -263,7 +348,9 @@ def is_spam_enabled(chat_id: int) -> bool:
 
 
 def is_nsfw_enabled(chat_id: int) -> bool:
-    """CHECK IF NSFW DETECTION IS ENABLED IN A CHAT"""
+    """
+    CHECK IF NSFW DETECTION IS ENABLED IN A CHAT
+    """
     return bool(
         c.execute(
             """
@@ -277,7 +364,9 @@ def is_nsfw_enabled(chat_id: int) -> bool:
 
 
 def enable_nsfw(chat_id: int):
-    """ENABLE NSFW DETECTION IN A CHAT"""
+    """
+    ENABLE NSFW DETECTION IN A CHAT
+    """
     c.execute(
         """
             UPDATE chats
@@ -290,7 +379,9 @@ def enable_nsfw(chat_id: int):
 
 
 def disable_nsfw(chat_id: int):
-    """DISABLE NSFW DETECTION IN A CHAT"""
+    """
+    DISABLE NSFW DETECTION IN A CHAT
+    """
     c.execute(
         """
             UPDATE chats
@@ -303,7 +394,9 @@ def disable_nsfw(chat_id: int):
 
 
 def enable_spam(chat_id: int):
-    """ENABLE SPAM PROTECTION IN A CHAT"""
+    """
+    ENABLE SPAM PROTECTION IN A CHAT
+    """
     c.execute(
         """
             UPDATE chats
@@ -316,7 +409,9 @@ def enable_spam(chat_id: int):
 
 
 def disable_spam(chat_id: int):
-    """DISABLE SPAM PROTECTION IN A CHAT"""
+    """
+    DISABLE SPAM PROTECTION IN A CHAT
+    """
     c.execute(
         """
             UPDATE chats
@@ -328,94 +423,74 @@ def disable_spam(chat_id: int):
     return conn.commit()
 
 
-def add_report(message_id: int):
-    """ADD A NEW SPAM/NSFW DETECTION REPORT TO DB"""
+def upvote(message_id: int, user_id: int):
+    """
+    UPVOTE A DETECTION REPORT
+    """
     c.execute(
         """
             INSERT
             INTO reports
-            VALUES (?, ?, ?)
+            VALUES (?, ?, ?, ?)
             """,
-        (message_id, "[]", "[]"),
+        (message_id, 1, 0, user_id),
     )
-    return c.commit()
-
-
-def upvote(message_id: int, user_id: int):
-    """UPVOTE A DETECTION REPORT"""
-    data = c.execute(
-        """
-            SELECT upvoters
-            FROM reports
-            WHERE message_id=?
-            """,
-        (message_id,),
-    ).fetchone()[0]
-    data = loads(data)
-    data.append(user_id)
-    data = dumps(data)
-    c.execute(
-        """
-            UPDATE reports
-            SET upvoters = ?
-            WHERE message_id = ?
-            """,
-        (data, message_id),
-    )
-
-    return await increment_reputation(user_id)
+    return increment_reputation(user_id)
 
 
 def downvote(message_id: int, user_id: int):
-    """DOWNVOTE A DETECTION REPORT"""
-    data = c.execute(
-        """
-            SELECT downvoters
-            FROM reports
-            WHERE message_id=?
-            """,
-        (message_id,),
-    ).fetchone()[0]
-    data = loads(data)
-    data.append(user_id)
-    data = dumps(data)
+    """
+    DOWNVOTE A DETECTION REPORT
+    """
     c.execute(
         """
-            UPDATE reports
-            SET downvoters = ?
-            WHERE message_id = ?
+            INSERT
+            INTO reports
+            VALUES (?, ?, ?, ?)
             """,
-        (data, message_id),
+        (message_id, 0, 1, user_id),
     )
-    return await increment_reputation(user_id)
+    return increment_reputation(user_id)
 
 
 def user_voted(message_id: int, user_id: int) -> bool:
-    """CHECK IF A USER VOTED TO A DETECTION REPORT"""
-    upvoters = c.execute(
-        """
-            SELECT upvoters
+    """
+    CHECK IF A USER VOTED TO A DETECTION REPORT
+    """
+    return bool(
+        c.execute(
+            """
+            SELECT *
             FROM reports
-            WHERE message_id=?
+            WHERE message_id=? AND user_id=?
             """,
-        (message_id,),
-    ).fetchone()[0]
-    upvoters = loads(upvoters)
+            (message_id, user_id),
+        ).fetchone()
+    )
 
-    if user_id in upvoters:
-        return True
+def ignore_nsfw(file_id: str):
+    """
+    IGNORE NSFW FALSE REPORTS
+    """
+    c.execute(
+            """
+            INSERT
+            INTO
+            ignored_media
+            VALUES (?, ?)
+            """, (file_id, int(time()))
+        )
+    return conn.commit()
 
-    downvoters = c.execute(
-        """
-            SELECT downvoters
-            FROM reports
-            WHERE message_id=?
-            """,
-        (message_id,),
-    ).fetchone()[0]
-    downvoters = loads(downvoters)
+def is_nsfw_downvoted(file_id: str) -> bool:
+    """
+    CHECK IF NSFW IS MARKED AS FALSE IN DB
+    """
+    return c.execute(
+            """
+            SELECT *
+            FROM ignored_media
+            WHERE file_id = ?
+            """, (file_id,)
+            ).fetchone()
 
-    if user_id in downvoters:
-        return True
-
-    return False

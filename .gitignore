@@ -3,6 +3,9 @@ config.py
 __pycache__/
 *.py[cod]
 *$py.class
+*.session
+*.sqlite3
+*.db
 
 # C extensions
 *.so

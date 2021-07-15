@@ -1,14 +1,15 @@
 import os
+
 from pyrogram import filters
 from pyrogram.types import Message
 
-from spr import arq, spr, SUDOERS
+from spr import SUDOERS, arq, spr
 from spr.utils.db import (add_chat, add_user, chat_exists,
-                          is_chat_blacklisted, is_nsfw_enabled,
-                          is_spam_enabled, is_user_blacklisted,
-                          user_exists, update_spam_data,
-                          is_nsfw_downvoted)
-from spr.utils.functions import (delete_get_info, delete_nsfw_notify,
+                          is_chat_blacklisted, is_nsfw_downvoted,
+                          is_nsfw_enabled, is_spam_enabled,
+                          is_user_blacklisted, update_spam_data,
+                          user_exists)
+from spr.utils.functions import (delete_nsfw_notify,
                                  delete_spam_notify, kick_user_notify)
 from spr.utils.misc import get_file_id
 
@@ -73,6 +74,4 @@ async def message_watcher(_, message: Message):
         return
     if not is_spam_enabled(chat_id) or user_id in SUDOERS:
         return
-    await delete_spam_notify(
-        message, result.spam_probability
-    )
+    await delete_spam_notify(message, result.spam_probability)

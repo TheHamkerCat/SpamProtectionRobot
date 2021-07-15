@@ -11,9 +11,8 @@ from pyrogram import filters
 from pyrogram.types import (InlineKeyboardButton,
                             InlineKeyboardMarkup, Message)
 
-from spr import SUDOERS, spr, arq
+from spr import SUDOERS, arq, spr
 from spr.utils.db import c
-
 
 __MODULE__ = "Devs"
 __HELP__ = """
@@ -29,6 +28,7 @@ __HELP__ = """
 c = c
 p = print
 arq = arq
+
 
 async def aexec(code, client, message):
     exec(
@@ -189,9 +189,7 @@ async def shellrunner(client, message):
             with open("output.txt", "w+") as file:
                 file.write(output)
             await message.reply_document(
-                "output.txt",
-                caption="`Output`",
-                quote=False
+                "output.txt", caption="`Output`", quote=False
             )
             return os.remove("output.txt")
         await edit_or_reply(

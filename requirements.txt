@@ -2,3 +2,4 @@ pyrogram
 TgCrypto
 python-arq
 pykeyboard
+dotenv

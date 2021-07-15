@@ -3,13 +3,15 @@ import re
 from importlib import import_module as import_
 
 from pyrogram import filters, idle
-from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, Message
+from pyrogram.types import (CallbackQuery, InlineKeyboardButton,
+                            InlineKeyboardMarkup, Message)
 
 from spr import conn, session, spr
 from spr.modules import MODULES
 from spr.utils.misc import once_a_day, paginate_modules
 
 HELPABLE = {}
+
 
 async def main():
     await spr.start()
@@ -37,29 +39,31 @@ async def main():
     await session.close()
     await spr.stop()
 
+
 @spr.on_message(filters.command(["help", "start"]), group=2)
 async def help_command(_, message: Message):
     if message.chat.type != "private":
         return await message.reply("Pm Me For Help")
-    text, keyboard = await help_parser(
-        message.from_user.mention
-    )
+    text, keyboard = await help_parser(message.from_user.mention)
     await message.reply_text(
         text,
         reply_markup=keyboard,
         quote=False,
     )
 
+
 async def help_parser(name, keyboard=None):
     if not keyboard:
         keyboard = InlineKeyboardMarkup(
             paginate_modules(0, HELPABLE, "help")
         )
-    return (f"""Hello {name}, I'm SpamProtectionRobot,
+    return (
+        f"""Hello {name}, I'm SpamProtectionRobot,
 And i can protect your group from Spam and NSFW media,
 Just add me to your group and i'll keep your group clean from spammers
-Choose an option from below.""", keyboard,
-)
+Choose an option from below.""",
+        keyboard,
+    )
 
 
 @spr.on_callback_query(filters.regex(r"help_(.*?)"))
@@ -136,9 +140,11 @@ You can choose an option below."""
 
     return await client.answer_callback_query(query.id)
 
+
 @spr.on_message(filters.command("runs"), group=3)
 async def runs_func(_, message: Message):
     await message.reply("What am i? Rose?")
+
 
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()

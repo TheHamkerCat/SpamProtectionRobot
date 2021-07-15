@@ -1,13 +1,20 @@
+from os.path import exists
 from sqlite3 import connect
 
 from aiohttp import ClientSession
 from pyrogram import Client
 from Python_ARQ import ARQ
 
-from config import (API_HASH, API_ID, ARQ_API_KEY, ARQ_API_URL,
-                    BOT_TOKEN, NSFW_LOG_CHANNEL, SPAM_LOG_CHANNEL,
-                    SUDOERS, DB_NAME,
-                    SESSION_NAME)
+SESSION_NAME = "spr"
+DB_NAME = "db.sqlite3"
+API_ID = 6
+API_HASH = "eb06d4abfb49dc3eeb1aeb98ae0f581e"
+ARQ_API_URL = "https://thearq.tech"
+
+if exists("config.py"):
+    from config import *
+else:
+    from sample_config import *
 
 session = ClientSession()
 

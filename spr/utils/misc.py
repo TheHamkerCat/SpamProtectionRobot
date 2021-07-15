@@ -1,16 +1,19 @@
-from math import ceil
-from pyrogram.types import InlineKeyboardButton
-from spr import spr, SUDOERS, DB_NAME, SESSION_NAME
 from asyncio import gather, sleep
 from datetime import datetime
+from math import ceil
+
+from pyrogram.types import InlineKeyboardButton
+
+from spr import DB_NAME, SESSION_NAME, SUDOERS, spr
+
 
 async def backup():
     for user in SUDOERS:
         try:
             await gather(
-                    spr.send_document(user, DB_NAME),
-                    spr.send_document(user, SESSION_NAME + ".session"),
-                    )
+                spr.send_document(user, DB_NAME),
+                spr.send_document(user, SESSION_NAME + ".session"),
+            )
         except Exception:
             pass
 
@@ -28,7 +31,7 @@ async def once_a_day():
         "BACKED UP, NEXT BACKUP WILL HAPPEN AFTER "
         + f"{round(seconds_till_twelve/60/60, 4)} HOUR(S)"
     )
-    await sleep(int(seconds_till_twelve)) # Sleep till 12 AM
+    await sleep(int(seconds_till_twelve))  # Sleep till 12 AM
     while True:
         print("DB BACKED UP!, NEXT BACKUP WILL HAPPEN AFTER 24 HOURS")
         await backup()
@@ -63,6 +66,7 @@ def get_file_id(message):
         if not message.video.thumbs:
             return
         return message.video.thumbs[0].file_id
+
 
 class EqInlineKeyboardButton(InlineKeyboardButton):
     def __eq__(self, other):
@@ -140,5 +144,8 @@ def paginate_modules(page_n, module_dict, prefix, chat=None):
 
     return pairs
 
+
 """ TO GET UPVOTES/DOWNVOTES FROM MESSAGE """
-clean = lambda x: int(x.text.split()[1].replace("(", "").replace(")", ""))
+clean = lambda x: int(
+    x.text.split()[1].replace("(", "").replace(")", "")
+)

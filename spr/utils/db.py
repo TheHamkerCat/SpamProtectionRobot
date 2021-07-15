@@ -40,14 +40,15 @@ c.execute(
 
 # For false NSFW reports
 c.execute(
-        """
+    """
         CREATE
         TABLE
         IF NOT EXISTS
         ignored_media
         (file_id, time)
         """
-        )
+)
+
 
 def user_exists(user_id: int) -> bool:
     """
@@ -157,7 +158,9 @@ def get_user_trust(user_id: int) -> float:
         (user_id,),
     ).fetchone()[0]
     data = loads(data)
-    return 100 if not data else round((100 - (sum(data) / len(data))), 4)
+    return (
+        100 if not data else round((100 - (sum(data) / len(data))), 4)
+    )
 
 
 # Each nsfw media user sends, adds 2 spam count and
@@ -468,29 +471,32 @@ def user_voted(message_id: int, user_id: int) -> bool:
         ).fetchone()
     )
 
+
 def ignore_nsfw(file_id: str):
     """
     IGNORE NSFW FALSE REPORTS
     """
     c.execute(
-            """
+        """
             INSERT
             INTO
             ignored_media
             VALUES (?, ?)
-            """, (file_id, int(time()))
-        )
+            """,
+        (file_id, int(time())),
+    )
     return conn.commit()
+
 
 def is_nsfw_downvoted(file_id: str) -> bool:
     """
     CHECK IF NSFW IS MARKED AS FALSE IN DB
     """
     return c.execute(
-            """
+        """
             SELECT *
             FROM ignored_media
             WHERE file_id = ?
-            """, (file_id,)
-            ).fetchone()
-
+            """,
+        (file_id,),
+    ).fetchone()

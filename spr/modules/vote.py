@@ -1,10 +1,10 @@
 from pyrogram import filters
 from pyrogram.types import CallbackQuery
 
-from spr import spr, SPAM_LOG_CHANNEL, NSFW_LOG_CHANNEL, SUDOERS
+from spr import NSFW_LOG_CHANNEL, SPAM_LOG_CHANNEL, SUDOERS, spr
 from spr.core import ikb
-from spr.utils.db import user_voted, upvote, downvote, ignore_nsfw
-from spr.utils.misc import get_file_id, clean
+from spr.utils.db import downvote, ignore_nsfw, upvote, user_voted
+from spr.utils.misc import clean, get_file_id
 
 
 @spr.on_callback_query(filters.regex(r"^upvote_"))
@@ -21,10 +21,12 @@ async def upvote_cb_func(_, cq: CallbackQuery):
         kb = cq.message.reply_markup.inline_keyboard
         upvotes = clean(kb[0][0])
         downvotes = clean(kb[0][1])
-        keyb = ikb({
-            f"Correct ({upvotes + 1})": "upvote_spam",
-            f"Incorrect ({downvotes})": "downvote_spam"
-            })
+        keyb = ikb(
+            {
+                f"Correct ({upvotes + 1})": "upvote_spam",
+                f"Incorrect ({downvotes})": "downvote_spam",
+            }
+        )
         await cq.edit_message_reply_markup(keyb)
     elif data == "nsfw":
         if user_id in SUDOERS:
@@ -49,10 +51,12 @@ async def downvote_cb_func(_, cq: CallbackQuery):
         kb = cq.message.reply_markup.inline_keyboard
         upvotes = clean(kb[0][0])
         downvotes = clean(kb[0][1])
-        keyb = ikb({
-            f"Correct ({upvotes})": "upvote_spam",
-            f"Incorrect ({downvotes + 1})": "downvote_spam"
-            })
+        keyb = ikb(
+            {
+                f"Correct ({upvotes})": "upvote_spam",
+                f"Incorrect ({downvotes + 1})": "downvote_spam",
+            }
+        )
         await cq.edit_message_reply_markup(keyb)
     elif data == "nsfw":
         if user_id in SUDOERS:

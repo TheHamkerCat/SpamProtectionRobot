@@ -1,13 +1,12 @@
 from pyrogram import filters
-from pyrogram.types import Message, InlineQuery, InlineQueryResultArticle, InputTextMessageContent
+from pyrogram.types import (InlineQuery, InlineQueryResultArticle,
+                            InputTextMessageContent, Message)
 
-from spr import spr, SUDOERS
-from spr.utils.db import (
-        get_nsfw_count, get_reputation,
-        get_user_trust, is_user_blacklisted,
-        is_chat_blacklisted, user_exists, chat_exists,
-        add_chat, add_user
-        )
+from spr import SUDOERS, spr
+from spr.utils.db import (add_chat, add_user, chat_exists,
+                          get_nsfw_count, get_reputation,
+                          get_user_trust, is_chat_blacklisted,
+                          is_user_blacklisted, user_exists)
 
 __MODULE__ = "Info"
 __HELP__ = """
@@ -18,6 +17,7 @@ __HELP__ = """
 or you can use inline mode >>
 @SpamProtectionBot [CHAT_ID/Username|USER_ID/Username]
 """
+
 
 async def get_user_info(user):
     try:
@@ -42,6 +42,7 @@ async def get_user_info(user):
 **Potential Spammer:** {True if trust < 70 else False}
 """
 
+
 async def get_chat_info(chat):
     try:
         chat = await spr.get_chat(chat)
@@ -59,12 +60,14 @@ async def get_chat_info(chat):
 **Blacklisted:** {is_chat_blacklisted(chat.id)}
 """
 
+
 async def get_info(entity):
     user = await get_user_info(entity)
     if user:
         return user
     chat = await get_chat_info(entity)
     return chat
+
 
 @spr.on_message(filters.command("info"), group=3)
 async def info_func(_, message: Message):
@@ -83,16 +86,13 @@ async def inline_info_func(_, query: InlineQuery):
     if not entity:
         err = "I haven't seen this user/chat."
         results = [
-                InlineQueryResultArticle(
-                    err,
-                    input_message_content=err
-                    )
-                ]
+            InlineQueryResultArticle(err, input_message_content=err)
+        ]
     else:
         results = [
-                InlineQueryResultArticle(
-                    "Found Entity",
-                    input_message_content=entity
-                    )
-                ]
+            InlineQueryResultArticle(
+                "Found Entity",
+                input_message_content=InputTextMessageContent(entity),
+            )
+        ]
     await query.answer(results=results, cache_time=3)

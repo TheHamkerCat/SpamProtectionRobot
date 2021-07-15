@@ -6,7 +6,8 @@ from pyrogram import filters, idle
 from pyrogram.types import (CallbackQuery, InlineKeyboardButton,
                             InlineKeyboardMarkup, Message)
 
-from spr import conn, session, spr
+from spr import BOT_USERNAME, conn, session, spr
+from spr.core import ikb
 from spr.modules import MODULES
 from spr.utils.misc import once_a_day, paginate_modules
 
@@ -43,12 +44,36 @@ async def main():
 @spr.on_message(filters.command(["help", "start"]), group=2)
 async def help_command(_, message: Message):
     if message.chat.type != "private":
-        return await message.reply("Pm Me For Help")
-    text, keyboard = await help_parser(message.from_user.mention)
-    await message.reply_text(
-        text,
-        reply_markup=keyboard,
-        quote=False,
+        kb = ikb({"Help": f"t.me/{BOT_USERNAME}?start=help"})
+        return await message.reply("Pm Me For Help", reply_markup=kb)
+    kb = ikb(
+        {
+            "Help": "bot_commands",
+            "Repo": "https://github.com/TheHamkerCat/SpamProtectionRobot",
+            "Add Me To Your Group": f"https://t.me/{BOT_USERNAME}?startgroup=new",
+            "Support Chat (for now)": "https://t.me/WBBSupport",
+        }
+    )
+    mention = message.from_user.mention
+    await message.reply_photo(
+        "https://hamker.me/logo_3.png",
+        caption=f"Hi {mention}, I'm SpamProtectionRobot,"
+        + " Choose An Option From Below.",
+        reply_markup=kb,
+    )
+
+
+@spr.on_callback_query(filters.regex("bot_commands"))
+async def commands_callbacc(_, cq: CallbackQuery):
+    text, keyboard = await help_parser(cq.from_user.mention)
+    await asyncio.gather(
+        cq.answer(),
+        cq.message.delete(),
+        spr.send_message(
+            cq.message.chat.id,
+            text=text,
+            reply_markup=keyboard,
+        ),
     )
 
 
@@ -58,10 +83,9 @@ async def help_parser(name, keyboard=None):
             paginate_modules(0, HELPABLE, "help")
         )
     return (
-        f"""Hello {name}, I'm SpamProtectionRobot,
-And i can protect your group from Spam and NSFW media,
-Just add me to your group and i'll keep your group clean from spammers
-Choose an option from below.""",
+        f"Hello {name}, I'm SpamProtectionRobot, I can protect "
+        + "your group from Spam and NSFW media using "
+        + "machine learning. Choose an option from below.",
         keyboard,
     )
 
@@ -73,11 +97,12 @@ async def help_button(client, query: CallbackQuery):
     next_match = re.match(r"help_next\((.+?)\)", query.data)
     back_match = re.match(r"help_back", query.data)
     create_match = re.match(r"help_create", query.data)
-    top_text = f"""
-Hello {query.from_user.first_name}, I'm SpamProtectionRobot,
-And i can protect your group from Spam and NSFW media,
-Just add me to your group and i'll keep your group clean from spammers
-You can choose an option below."""
+    u = query.from_user.mention
+    top_text = (
+        f"Hello {u}, I'm SpamProtectionRobot, I can protect "
+        + "your group from Spam and NSFW media using "
+        + "machine learning. Choose an option from below."
+    )
     if mod_match:
         module = mod_match.group(1)
         text = (

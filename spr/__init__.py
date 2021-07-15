@@ -1,5 +1,7 @@
+from json import loads
 from os.path import exists
 from sqlite3 import connect
+from urllib.request import urlopen as get
 
 from aiohttp import ClientSession
 from pyrogram import Client
@@ -15,6 +17,13 @@ if exists("config.py"):
     from config import *
 else:
     from sample_config import *
+
+# Witchery
+BOT_USERNAME = loads(
+    get(f"https://api.telegram.org/bot{BOT_TOKEN}/getme")
+    .read()
+    .decode()
+)["result"]["username"]
 
 session = ClientSession()
 

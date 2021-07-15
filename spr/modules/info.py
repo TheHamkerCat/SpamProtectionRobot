@@ -86,7 +86,10 @@ async def inline_info_func(_, query: InlineQuery):
     if not entity:
         err = "I haven't seen this user/chat."
         results = [
-            InlineQueryResultArticle(err, input_message_content=err)
+            InlineQueryResultArticle(
+                err,
+                input_message_content=InputTextMessageContent(err),
+            )
         ]
     else:
         results = [

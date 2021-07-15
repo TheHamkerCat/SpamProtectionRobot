@@ -96,7 +96,10 @@ __Message has been deleted__
         }
     )
     m = await spr.send_message(
-        SPAM_LOG_CHANNEL, report, reply_markup=keyb
+        SPAM_LOG_CHANNEL,
+        report,
+        reply_markup=keyb,
+        disable_web_page_preview=True,
     )
 
     keyb = ikb({"View Message": m.link})

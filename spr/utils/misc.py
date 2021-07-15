@@ -18,6 +18,15 @@ async def backup():
             pass
 
 
+async def admins(chat_id: int):
+    return [
+        member.user.id
+        async for member in spr.iter_chat_members(
+            chat_id, filter="administrators"
+        )
+    ]
+
+
 async def once_a_day():
     print("BACKING UP DB...")
     await backup()

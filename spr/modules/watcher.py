@@ -11,7 +11,7 @@ from spr.utils.db import (add_chat, add_user, chat_exists,
                           user_exists)
 from spr.utils.functions import (delete_nsfw_notify,
                                  delete_spam_notify, kick_user_notify)
-from spr.utils.misc import get_file_id
+from spr.utils.misc import admins, get_file_id
 
 
 @spr.on_message(
@@ -41,14 +41,15 @@ async def message_watcher(_, message: Message):
             if not user_exists(user_id):
                 add_user(user_id)
             if is_user_blacklisted(user_id) and chat_id:
-                await kick_user_notify(message)
+                if user_id not in (await admins(chat_id)):
+                    await kick_user_notify(message)
 
     if not chat_id or not user_id:
         return
 
     file_id = get_file_id(message)
     if file_id:
-        if user_id in SUDOERS:
+        if user_id in SUDOERS or user_id in (await admins(chat_id)):
             return
         if is_nsfw_downvoted(file_id):
             return
@@ -72,6 +73,8 @@ async def message_watcher(_, message: Message):
     update_spam_data(user_id, result.spam)
     if not result.is_spam:
         return
-    if not is_spam_enabled(chat_id) or user_id in SUDOERS:
+    if not is_spam_enabled(chat_id):
+        return
+    if user_id in SUDOERS or user_id in (await admins(chat_id)):
         return
     await delete_spam_notify(message, result.spam_probability)

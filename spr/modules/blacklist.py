@@ -13,7 +13,7 @@ from spr.utils.db import (add_chat, add_user, blacklist_chat,
     filters.command("blacklist") & filters.user(SUDOERS), group=3
 )
 async def blacklist_func(_, message: Message):
-    err = "Enter a user/chat's id."
+    err = "Enter a user/chat's id and give a reason."
     if len(message.command) < 3:
         return await message.reply_text(err)
     id = message.text.split(None, 2)[1]
@@ -40,7 +40,7 @@ async def blacklist_func(_, message: Message):
             return await message.reply_text(
                 "This chat is already blacklisted."
             )
-        blacklist_chat(id)
+        blacklist_chat(id, reason)
         await message.reply_text(f"Blacklisted chat {chat.title}")
         msg = f"**BLACKLIST EVENT**\n{await get_info(id)}\n**Reason:** {reason}"
         return await spr.send_message(SPAM_LOG_CHANNEL, text=msg)
@@ -60,7 +60,7 @@ async def blacklist_func(_, message: Message):
         return await message.reply_text(
             "This user is already blacklisted."
         )
-    blacklist_user(id)
+    blacklist_user(id, reason)
     await message.reply_text(f"Blacklisted user {user.mention}")
     msg = f"**BLACKLIST EVENT**\n{await get_info(id)}\n**Reason:** {reason}"
     await spr.send_message(SPAM_LOG_CHANNEL, text=msg)

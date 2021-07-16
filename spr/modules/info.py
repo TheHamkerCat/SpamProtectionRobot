@@ -1,12 +1,15 @@
+from time import ctime
+
 from pyrogram import filters
 from pyrogram.types import (InlineQuery, InlineQueryResultArticle,
                             InputTextMessageContent, Message)
 
 from spr import SUDOERS, spr
 from spr.utils.db import (add_chat, add_user, chat_exists,
-                          get_nsfw_count, get_reputation,
-                          get_user_trust, is_chat_blacklisted,
-                          is_user_blacklisted, user_exists)
+                          get_blacklist_event, get_nsfw_count,
+                          get_reputation, get_user_trust,
+                          is_chat_blacklisted, is_user_blacklisted,
+                          user_exists)
 
 __MODULE__ = "Info"
 __HELP__ = """
@@ -27,7 +30,11 @@ async def get_user_info(user):
     if not user_exists(user.id):
         add_user(user.id)
     trust = get_user_trust(user.id)
-    return f"""
+    blacklisted = is_user_blacklisted(user.id)
+    reason = None
+    if blacklisted:
+        reason, time = get_blacklist_event(user.id)
+    data = f"""
 **ID:** {user.id}
 **DC:** {user.dc_id}
 **Username:** {user.username}
@@ -38,9 +45,15 @@ async def get_user_info(user):
 **Spammer:** {True if trust < 50 else False}
 **Reputation:** {get_reputation(user.id)}
 **NSFW Count:** {get_nsfw_count(user.id)}
-**Blacklisted:** {is_user_blacklisted(user.id)}
 **Potential Spammer:** {True if trust < 70 else False}
+**Blacklisted:** {blacklisted}
 """
+    data += (
+        f"**Blacklist Reason:** {reason} | {ctime(time)}"
+        if reason
+        else ""
+    )
+    return data
 
 
 async def get_chat_info(chat):
@@ -50,15 +63,25 @@ async def get_chat_info(chat):
         return
     if not chat_exists(chat.id):
         add_chat(chat.id)
-    return f"""
+    blacklisted = is_chat_blacklisted(chat.id)
+    reason = None
+    if blacklisted:
+        reason, time = get_blacklist_event(chat.id)
+    data = f"""
 **ID:** {chat.id}
 **Username:** {chat.username}
 **Type:** {chat.type}
 **Members:** {chat.members_count}
 **Scam:** {chat.is_scam}
 **Restricted:** {chat.is_restricted}
-**Blacklisted:** {is_chat_blacklisted(chat.id)}
+**Blacklisted:** {blacklisted}
 """
+    data += (
+        f"**Blacklist Reason:** {reason} | {ctime(time)}"
+        if reason
+        else ""
+    )
+    return data
 
 
 async def get_info(entity):

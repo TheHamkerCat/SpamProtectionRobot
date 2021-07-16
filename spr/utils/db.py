@@ -49,6 +49,17 @@ c.execute(
         """
 )
 
+# For blacklist reasons
+c.execute(
+    """
+        CREATE
+        TABLE
+        IF NOT EXISTS
+        reasons
+        (id, reason, time)
+        """
+)
+
 
 def user_exists(user_id: int) -> bool:
     """
@@ -242,7 +253,7 @@ def decrement_reputation(user_id: int):
     return conn.commit()
 
 
-def blacklist_user(user_id: int):
+def blacklist_user(user_id: int, reason: str):
     """
     BLACKLIST A USER
     """
@@ -254,10 +265,32 @@ def blacklist_user(user_id: int):
             """,
         (user_id,),
     )
+    c.execute(
+        """
+            INSERT
+            INTO reasons
+            VALUES (?, ?, ?)
+            """,
+        (user_id, reason, time()),
+    )
     return conn.commit()
 
 
-def blacklist_chat(chat_id: int):
+def get_blacklist_event(id: int):
+    """
+    GET REASON AND TIME FOR A BLACKLIST EVENT
+    """
+    return c.execute(
+        """
+            SELECT reason, time
+            FROM reasons
+            WHERE id = ?
+            """,
+        (id,),
+    ).fetchone()
+
+
+def blacklist_chat(chat_id: int, reason: str):
     """
     BLACKLIST A CHAT
     """
@@ -268,6 +301,14 @@ def blacklist_chat(chat_id: int):
             WHERE chat_id=?
             """,
         (chat_id,),
+    )
+    c.execute(
+        """
+            INSERT
+            INTO reasons
+            VALUES (?, ?, ?)
+            """,
+        (chat_id, reason, time()),
     )
     return conn.commit()
 
@@ -284,6 +325,14 @@ def whitelist_user(user_id: int):
             """,
         (user_id,),
     )
+    c.execute(
+        """
+            DELETE
+            FROM reasons
+            WHERE id = ?
+            """,
+        (user_id,),
+    )
     return conn.commit()
 
 
@@ -296,6 +345,14 @@ def whitelist_chat(chat_id: int):
             UPDATE chats
             SET blacklisted = 0
             WHERE chat_id=?
+            """,
+        (chat_id,),
+    )
+    c.execute(
+        """
+            DELETE
+            FROM reasons
+            WHERE id = ?
             """,
         (chat_id,),
     )

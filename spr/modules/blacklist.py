@@ -42,7 +42,7 @@ async def blacklist_func(_, message: Message):
             )
         blacklist_chat(id, reason)
         await message.reply_text(f"Blacklisted chat {chat.title}")
-        msg = f"**BLACKLIST EVENT**\n{await get_info(id)}\n**Reason:** {reason}"
+        msg = f"**BLACKLIST EVENT**\n{await get_info(id)}"
         return await spr.send_message(SPAM_LOG_CHANNEL, text=msg)
 
     if id in SUDOERS:
@@ -62,7 +62,7 @@ async def blacklist_func(_, message: Message):
         )
     blacklist_user(id, reason)
     await message.reply_text(f"Blacklisted user {user.mention}")
-    msg = f"**BLACKLIST EVENT**\n{await get_info(id)}\n**Reason:** {reason}"
+    msg = f"**BLACKLIST EVENT**\n{await get_info(id)}"
     await spr.send_message(SPAM_LOG_CHANNEL, text=msg)
 
 

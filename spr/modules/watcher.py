@@ -11,7 +11,7 @@ from spr.utils.db import (add_chat, add_user, chat_exists,
                           user_exists)
 from spr.utils.functions import (delete_nsfw_notify,
                                  delete_spam_notify, kick_user_notify)
-from spr.utils.misc import admins, get_file_id
+from spr.utils.misc import admins, get_file_id, get_file_unique_id
 
 
 @spr.on_message(
@@ -48,10 +48,11 @@ async def message_watcher(_, message: Message):
         return
 
     file_id = get_file_id(message)
-    if file_id:
+    file_unique_id = get_file_unique_id(message)
+    if file_id and file_unique_id:
         if user_id in SUDOERS or user_id in (await admins(chat_id)):
             return
-        if is_nsfw_downvoted(file_id):
+        if is_nsfw_downvoted(file_unique_id):
             return
         file = await spr.download_media(file_id)
         resp = await arq.nsfw_scan(file=file)

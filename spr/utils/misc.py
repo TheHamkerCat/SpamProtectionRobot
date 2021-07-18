@@ -77,6 +77,14 @@ def get_file_id(message):
         return message.video.thumbs[0].file_id
 
 
+def get_file_unique_id(message):
+    m = message
+    m = m.sticker or m.video or m.document or m.animation or m.photo
+    if not m:
+        return
+    return m.file_unique_id
+
+
 class EqInlineKeyboardButton(InlineKeyboardButton):
     def __eq__(self, other):
         return self.text == other.text

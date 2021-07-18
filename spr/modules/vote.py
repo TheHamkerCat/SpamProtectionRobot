@@ -4,7 +4,7 @@ from pyrogram.types import CallbackQuery
 from spr import NSFW_LOG_CHANNEL, SPAM_LOG_CHANNEL, SUDOERS, spr
 from spr.core import ikb
 from spr.utils.db import downvote, ignore_nsfw, upvote, user_voted
-from spr.utils.misc import clean, get_file_id
+from spr.utils.misc import clean, get_file_unique_id
 
 
 @spr.on_callback_query(filters.regex(r"^upvote_"))
@@ -60,7 +60,7 @@ async def downvote_cb_func(_, cq: CallbackQuery):
         await cq.edit_message_reply_markup(keyb)
     elif data == "nsfw":
         if user_id in SUDOERS:
-            file_id = get_file_id(cq.message)
+            file_id = get_file_unique_id(cq.message)
             ignore_nsfw(file_id)
             await cq.message.delete()
         await cq.answer()

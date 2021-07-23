@@ -93,7 +93,7 @@ async def delete_spam_notify(
 __Message has been deleted__
 """
     content = message.text or message.caption
-    content = content[1:3700]
+    content = content[1:400] + "..."
     report = f"""
 **SPAM DETECTION**
 {info}
@@ -105,7 +105,9 @@ __Message has been deleted__
         {
             "Correct (0)": "upvote_spam",
             "Incorrect (0)": "downvote_spam",
-        }
+            "Chat": "https://t.me/" + (message.chat.username or "SpamProtectionLog/93"),
+        },
+        2
     )
     m = await spr.send_message(
         SPAM_LOG_CHANNEL,

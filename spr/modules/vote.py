@@ -21,11 +21,15 @@ async def upvote_cb_func(_, cq: CallbackQuery):
         kb = cq.message.reply_markup.inline_keyboard
         upvotes = clean(kb[0][0])
         downvotes = clean(kb[0][1])
+        link = kb[1][0].text
+
         keyb = ikb(
             {
                 f"Correct ({upvotes + 1})": "upvote_spam",
                 f"Incorrect ({downvotes})": "downvote_spam",
-            }
+                "Chat": link,
+            },
+            2
         )
         await cq.edit_message_reply_markup(keyb)
     elif data == "nsfw":
@@ -51,11 +55,14 @@ async def downvote_cb_func(_, cq: CallbackQuery):
         kb = cq.message.reply_markup.inline_keyboard
         upvotes = clean(kb[0][0])
         downvotes = clean(kb[0][1])
+        link = kb[1][0].text
         keyb = ikb(
             {
                 f"Correct ({upvotes})": "upvote_spam",
                 f"Incorrect ({downvotes + 1})": "downvote_spam",
-            }
+                "Chat": link,
+            },
+            2
         )
         await cq.edit_message_reply_markup(keyb)
     elif data == "nsfw":

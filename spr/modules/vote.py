@@ -21,7 +21,7 @@ async def upvote_cb_func(_, cq: CallbackQuery):
         kb = cq.message.reply_markup.inline_keyboard
         upvotes = clean(kb[0][0])
         downvotes = clean(kb[0][1])
-        link = kb[1][0].text
+        link = kb[1][0].url
 
         keyb = ikb(
             {
@@ -55,7 +55,7 @@ async def downvote_cb_func(_, cq: CallbackQuery):
         kb = cq.message.reply_markup.inline_keyboard
         upvotes = clean(kb[0][0])
         downvotes = clean(kb[0][1])
-        link = kb[1][0].text
+        link = kb[1][0].url
         keyb = ikb(
             {
                 f"Correct ({upvotes})": "upvote_spam",

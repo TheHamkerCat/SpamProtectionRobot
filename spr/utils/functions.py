@@ -93,7 +93,7 @@ async def delete_spam_notify(
 __Message has been deleted__
 """
     content = message.text or message.caption
-    content = content[1:400] + "..."
+    content = content[:400] + "..."
     report = f"""
 **SPAM DETECTION**
 {info}

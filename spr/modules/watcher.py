@@ -55,7 +55,10 @@ async def message_watcher(_, message: Message):
         if is_nsfw_downvoted(file_unique_id):
             return
         file = await spr.download_media(file_id)
-        resp = await arq.nsfw_scan(file=file)
+        try:
+            resp = await arq.nsfw_scan(file=file)
+        except Exception:
+            return os.remove(file)
         os.remove(file)
         if resp.ok:
             if resp.result.is_nsfw:

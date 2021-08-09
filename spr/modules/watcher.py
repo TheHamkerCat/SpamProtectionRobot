@@ -58,7 +58,10 @@ async def message_watcher(_, message: Message):
         try:
             resp = await arq.nsfw_scan(file=file)
         except Exception:
-            return os.remove(file)
+            try:
+                return os.remove(file)
+            except Exception:
+                return
         os.remove(file)
         if resp.ok:
             if resp.result.is_nsfw:

@@ -124,13 +124,13 @@ __Message has been deleted__
 
 async def kick_user_notify(message: Message):
     try:
-        await spr.kick_chat_member(
+        await spr.ban_chat_member(
             message.chat.id, message.from_user.id
         )
     except (ChatAdminRequired, UserAdminInvalid):
         try:
             return await message.reply_text(
-                "I don't have enough permission to kick "
+                "I don't have enough permission to ban "
                 + "this user who is Blacklisted and Flagged as Spammer."
             )
         except ChatWriteForbidden:

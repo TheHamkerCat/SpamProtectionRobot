@@ -3,7 +3,7 @@ config.py
 __pycache__/
 *.py[cod]
 *$py.class
-*.session
+*.session*
 *.sqlite3
 *.db
 

@@ -1,8 +1,10 @@
 from asyncio import gather, sleep
 from datetime import datetime
 from math import ceil
+from time import time
 
-from pyrogram.types import InlineKeyboardButton
+from pyrogram.types import InlineKeyboardButton, ChatMemberUpdated
+
 
 from spr import DB_NAME, SESSION_NAME, SUDOERS, spr
 
@@ -17,14 +19,44 @@ async def backup():
         except Exception:
             pass
 
+admins_in_chat = {}
+
 
 async def admins(chat_id: int):
-    return [
-        member.user.id
-        async for member in spr.iter_chat_members(
-            chat_id, filter="administrators"
-        )
-    ]
+    global admins_in_chat
+    if chat_id in admins_in_chat:
+        interval = time() - admins_in_chat[chat_id]["last_updated_at"]
+        if interval < 3600:
+            return admins_in_chat[chat_id]["data"]
+
+    admins_in_chat[chat_id] = {
+        "last_updated_at": time(),
+        "data": [
+            member.user.id
+            async for member in spr.iter_chat_members(
+                chat_id, filter="administrators"
+            )
+        ],
+    }
+    return admins_in_chat[chat_id]["data"]
+
+
+# Admin cache reload
+
+
+@spr.on_chat_member_updated()
+async def admin_cache_func(_, cmu: ChatMemberUpdated):
+    if cmu.old_chat_member and cmu.old_chat_member.promoted_by:
+        admins_in_chat[cmu.chat.id] = {
+            "last_updated_at": time(),
+            "data": [
+                member.user.id
+                async for member in spr.iter_chat_members(
+                    cmu.chat.id, filter="administrators"
+                )
+            ],
+        }
+        print(f"Updated admin cache for {cmu.chat.id} [{cmu.chat.title}]")
 
 
 async def once_a_day():

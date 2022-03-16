@@ -49,7 +49,8 @@ async def edit_or_reply(msg: Message, **kwargs):
     & ~filters.forwarded
     & ~filters.via_bot
     & ~filters.edited
-    & filters.command("eval")
+    & filters.command("eval"),
+    group=50,
 )
 async def executor(client, message):
     try:
@@ -132,6 +133,7 @@ async def runtime_func_cq(_, cq):
     & ~filters.via_bot
     & ~filters.edited
     & filters.command("sh"),
+    group=50,
 )
 async def shellrunner(client, message):
     if len(message.command) < 2:

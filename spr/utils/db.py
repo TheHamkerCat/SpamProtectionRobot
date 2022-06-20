@@ -5,9 +5,7 @@ from time import time
 
 from spr import conn
 
-c = conn.cursor()
-
-c.execute(
+conn.execute(
     """
         CREATE
         TABLE
@@ -17,7 +15,7 @@ c.execute(
         """
 )
 
-c.execute(
+conn.execute(
     """
         CREATE
         TABLE
@@ -28,7 +26,7 @@ c.execute(
 )
 
 # For reports in SPAM log channel
-c.execute(
+conn.execute(
     """
         CREATE
         TABLE
@@ -39,7 +37,7 @@ c.execute(
 )
 
 # For false NSFW reports
-c.execute(
+conn.execute(
     """
         CREATE
         TABLE
@@ -50,7 +48,7 @@ c.execute(
 )
 
 # For blacklist reasons
-c.execute(
+conn.execute(
     """
         CREATE
         TABLE
@@ -65,6 +63,7 @@ def user_exists(user_id: int) -> bool:
     """
     CHECK IF A USER EXISTS IN DB
     """
+    c = conn.cursor()
     return c.execute(
         """
             SELECT *
@@ -79,6 +78,7 @@ def chat_exists(chat_id: int) -> bool:
     """
     CHECK IF A CHAT EXISTS IN DB
     """
+    c = conn.cursor()
     return c.execute(
         """
             SELECT *
@@ -93,6 +93,7 @@ def add_user(user_id: int):
     """
     ADD A USER IN DB
     """
+    c = conn.cursor()
     c.execute(
         """
             INSERT
@@ -101,13 +102,13 @@ def add_user(user_id: int):
             """,
         (user_id, "[]", 0, 0, 0),
     )
-    return conn.commit()
 
 
 def add_chat(chat_id: int):
     """
     ADD A CHAT IN DB
     """
+    c = conn.cursor()
     c.execute(
         """
             INSERT
@@ -116,7 +117,6 @@ def add_chat(chat_id: int):
             """,
         (chat_id, 1, 1, 0),
     )
-    return conn.commit()
 
 
 # the below function below gets called on each message update,
@@ -128,6 +128,7 @@ def update_spam_data(user_id: int, spam_value: float):
     """
     UPDATE SPAM DATA OF A USER
     """
+    c = conn.cursor()
     data = c.execute(
         """
             SELECT spam_data
@@ -153,13 +154,13 @@ def update_spam_data(user_id: int, spam_value: float):
             """,
         (data, user_id),
     )
-    return conn.commit()
 
 
 def get_user_trust(user_id: int) -> float:
     """
     GET TRUST PREDICTION OF A USER
     """
+    c = conn.cursor()
     data = c.execute(
         """
             SELECT spam_data
@@ -182,6 +183,7 @@ def increment_nsfw_count(user_id: int):
     """
     INCREMENT NSFW MESSAGES COUNT OF A USER
     """
+    c = conn.cursor()
     c.execute(
         """
             UPDATE users
@@ -199,6 +201,7 @@ def get_nsfw_count(user_id: int):
     """
     GET NSFW MESSAGES COUNT OF A USER
     """
+    c = conn.cursor()
     return c.execute(
         """
             SELECT nsfw_count
@@ -213,6 +216,7 @@ def get_reputation(user_id: int) -> int:
     """
     GET REPUTATION OF A USER
     """
+    c = conn.cursor()
     return c.execute(
         """
             SELECT reputation
@@ -227,6 +231,7 @@ def increment_reputation(user_id: int):
     """
     INCREMENT REPUTATION OF A USER
     """
+    c = conn.cursor()
     c.execute(
         """
             UPDATE users
@@ -235,13 +240,13 @@ def increment_reputation(user_id: int):
             """,
         (user_id,),
     )
-    return conn.commit()
 
 
 def decrement_reputation(user_id: int):
     """
     DECREMENT REPUTATION OF A USER
     """
+    c = conn.cursor()
     c.execute(
         """
             UPDATE users
@@ -250,13 +255,13 @@ def decrement_reputation(user_id: int):
             """,
         (user_id,),
     )
-    return conn.commit()
 
 
 def blacklist_user(user_id: int, reason: str):
     """
     BLACKLIST A USER
     """
+    c = conn.cursor()
     c.execute(
         """
             UPDATE users
@@ -280,6 +285,7 @@ def get_blacklist_event(id: int):
     """
     GET REASON AND TIME FOR A BLACKLIST EVENT
     """
+    c = conn.cursor()
     return c.execute(
         """
             SELECT reason, time
@@ -294,6 +300,7 @@ def blacklist_chat(chat_id: int, reason: str):
     """
     BLACKLIST A CHAT
     """
+    c = conn.cursor()
     c.execute(
         """
             UPDATE chats
@@ -317,6 +324,7 @@ def whitelist_user(user_id: int):
     """
     WHITELIST A USER
     """
+    c = conn.cursor()
     c.execute(
         """
             UPDATE users
@@ -340,6 +348,7 @@ def whitelist_chat(chat_id: int):
     """
     WHITELIST A CHAT
     """
+    c = conn.cursor()
     c.execute(
         """
             UPDATE chats
@@ -363,6 +372,7 @@ def is_user_blacklisted(user_id: int) -> bool:
     """
     CHECK IF A USER IS BLACKLISTED
     """
+    c = conn.cursor()
     return bool(
         c.execute(
             """
@@ -379,6 +389,7 @@ def is_chat_blacklisted(chat_id: int) -> bool:
     """
     CHECK IF A CHAT IS BLACKLISTED
     """
+    c = conn.cursor()
     return bool(
         c.execute(
             """
@@ -395,6 +406,7 @@ def is_spam_enabled(chat_id: int) -> bool:
     """
     CHECK IF SPAM PROTECTION IS ENABLED IN A CHAT
     """
+    c = conn.cursor()
     return bool(
         c.execute(
             """
@@ -411,6 +423,7 @@ def is_nsfw_enabled(chat_id: int) -> bool:
     """
     CHECK IF NSFW DETECTION IS ENABLED IN A CHAT
     """
+    c = conn.cursor()
     return bool(
         c.execute(
             """
@@ -427,6 +440,7 @@ def enable_nsfw(chat_id: int):
     """
     ENABLE NSFW DETECTION IN A CHAT
     """
+    c = conn.cursor()
     c.execute(
         """
             UPDATE chats
@@ -442,6 +456,7 @@ def disable_nsfw(chat_id: int):
     """
     DISABLE NSFW DETECTION IN A CHAT
     """
+    c = conn.cursor()
     c.execute(
         """
             UPDATE chats
@@ -457,6 +472,7 @@ def enable_spam(chat_id: int):
     """
     ENABLE SPAM PROTECTION IN A CHAT
     """
+    c = conn.cursor()
     c.execute(
         """
             UPDATE chats
@@ -472,6 +488,7 @@ def disable_spam(chat_id: int):
     """
     DISABLE SPAM PROTECTION IN A CHAT
     """
+    c = conn.cursor()
     c.execute(
         """
             UPDATE chats
@@ -487,6 +504,7 @@ def upvote(message_id: int, user_id: int):
     """
     UPVOTE A DETECTION REPORT
     """
+    c = conn.cursor()
     c.execute(
         """
             INSERT
@@ -502,6 +520,7 @@ def downvote(message_id: int, user_id: int):
     """
     DOWNVOTE A DETECTION REPORT
     """
+    c = conn.cursor()
     c.execute(
         """
             INSERT
@@ -517,6 +536,7 @@ def user_voted(message_id: int, user_id: int) -> bool:
     """
     CHECK IF A USER VOTED TO A DETECTION REPORT
     """
+    c = conn.cursor()
     return bool(
         c.execute(
             """
@@ -533,6 +553,7 @@ def ignore_nsfw(file_id: str):
     """
     IGNORE NSFW FALSE REPORTS
     """
+    c = conn.cursor()
     c.execute(
         """
             INSERT
@@ -549,6 +570,7 @@ def is_nsfw_downvoted(file_id: str) -> bool:
     """
     CHECK IF NSFW IS MARKED AS FALSE IN DB
     """
+    c = conn.cursor()
     return c.execute(
         """
             SELECT *

@@ -9,7 +9,7 @@ from pyrogram.types import (CallbackQuery, InlineKeyboardButton,
 from spr import BOT_USERNAME, conn, session, spr
 from spr.core import ikb
 from spr.modules import MODULES
-from spr.utils.misc import once_a_day, paginate_modules
+from spr.utils.misc import once_a_day, once_a_minute, paginate_modules
 
 HELPABLE = {}
 
@@ -34,6 +34,7 @@ async def main():
     print("STARTED !")
     loop = asyncio.get_running_loop()
     loop.create_task(once_a_day())
+    loop.create_task(once_a_minute())
     await idle()
     conn.commit()
     conn.close()

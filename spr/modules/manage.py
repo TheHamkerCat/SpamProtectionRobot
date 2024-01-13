@@ -54,7 +54,6 @@ async def nsfw_toggle_func(_, message: Message):
             "Unknown Suffix, Use /anti_nsfw [ENABLE|DISABLE]"
         )
 
-
 @spr.on_message(
     filters.command("anti_spam") & ~filters.private, group=3
 )
@@ -75,13 +74,19 @@ async def spam_toggle_func(_, message: Message):
     status = message.text.split(None, 1)[1].strip()
     status = status.lower()
     chat_id = message.chat.id
+
+    # Check if spam detection status is None before subscripting
+    current_status = is_spam_enabled(chat_id)
+    if current_status is None:
+        return await message.reply("Error retrieving spam detection status.")
+
     if status == "enable":
-        if is_spam_enabled(chat_id):
+        if current_status:
             return await message.reply("Already enabled.")
         enable_spam(chat_id)
         await message.reply_text("Enabled Spam Detection.")
     elif status == "disable":
-        if not is_spam_enabled(chat_id):
+        if not current_status:
             return await message.reply("Already disabled.")
         disable_spam(chat_id)
         await message.reply_text("Disabled Spam Detection.")

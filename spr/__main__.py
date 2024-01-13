@@ -101,7 +101,7 @@ async def help_button(client, query: CallbackQuery):
     top_text = (
         f"Hello {u}, I'm SpamProtectionRobot, I can protect "
         + "your group from Spam and NSFW media using "
-        + "machine learning. Choose an option from below."
+        + "machine learning.\n\nChoose an option from below."
     )
     if mod_match:
         module = mod_match.group(1)

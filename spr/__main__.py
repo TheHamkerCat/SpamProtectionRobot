@@ -85,7 +85,7 @@ async def help_parser(name, keyboard=None):
     return (
         f"Hello {name}, I'm Anti-Spam, I can protect "
         + "your group from Spam and NSFW media using "
-        + "machine learning. Choose an option from below.",
+        + "machine learning.\n\nChoose an option from below.",
         keyboard,
     )
 

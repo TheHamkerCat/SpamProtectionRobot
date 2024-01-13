@@ -51,16 +51,16 @@ async def help_command(_, message: Message):
     kb = ikb(
         {
             "Help": "bot_commands",
-            "Repo": "https://github.com/TheHamkerCat/SpamProtectionRobot",
+            "Support": "https://t.me/iyo_obot",
             "Add Me To Your Group": f"https://t.me/{BOT_USERNAME}?startgroup=new",
-            "Support Chat (for now)": "https://t.me/WBBSupport",
         }
     )
     mention = message.from_user.mention
     await message.reply_photo(
         "https://telegra.ph/file/94da698ebba27e2435a15.jpg",
-        caption=f"Hi {mention}, I'm SpamProtectionRobot,"
-        + " Choose An Option From Below.",
+        caption=f"Hi {mention}, I'm Anti-Spam Bot,"
+        + " I can protect your group from Spam and NSFW media using machine learning.",
+        + " Add me to your group now!",
         reply_markup=kb,
     )
 
@@ -85,7 +85,7 @@ async def help_parser(name, keyboard=None):
             paginate_modules(0, HELPABLE, "help")
         )
     return (
-        f"Hello {name}, I'm SpamProtectionRobot, I can protect "
+        f"Hello {name}, I'm Anti-Spam, I can protect "
         + "your group from Spam and NSFW media using "
         + "machine learning. Choose an option from below.",
         keyboard,
@@ -120,7 +120,7 @@ async def help_button(client, query: CallbackQuery):
                 [
                     [
                         InlineKeyboardButton(
-                            "back", callback_data="help_back"
+                            "Back", callback_data="help_back"
                         )
                     ]
                 ]

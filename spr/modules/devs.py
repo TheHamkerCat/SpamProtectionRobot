@@ -48,7 +48,6 @@ async def edit_or_reply(msg: Message, **kwargs):
     filters.user(SUDOERS)
     & ~filters.forwarded
     & ~filters.via_bot
-    & ~filters.edited
     & filters.command("eval"),
     group=50,
 )

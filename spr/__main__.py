@@ -52,14 +52,13 @@ async def help_command(_, message: Message):
         {
             "Help": "bot_commands",
             "Support": "https://t.me/iyo_obot",
-            "Add Me To Your Group": f"https://t.me/{BOT_USERNAME}?startgroup=new",
+            "\nAdd Me To Your Group": f"https://t.me/{BOT_USERNAME}?startgroup=new",
         }
     )
     mention = message.from_user.mention
     await message.reply_photo(
         "https://telegra.ph/file/94da698ebba27e2435a15.jpg",
-        caption=f"Hi {mention}, I'm Anti-Spam Bot,"
-        + " I can protect your group from Spam and NSFW media using machine learning.\n\nAdd me to your group now!",
+        caption=f"Hello {mention}, I'm Anti-Spam Bot\n\nI can protect your group from Spam and NSFW media using machine learning.\n\nAdd me to your group now!",
         reply_markup=kb,
     )
 

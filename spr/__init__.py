@@ -9,7 +9,7 @@ SESSION_NAME = "spr"
 DB_NAME = "db.sqlite3"
 API_ID = 6
 API_HASH = "eb06d4abfb49dc3eeb1aeb98ae0f581e"
-ARQ_API_URL = "https://arq.hamker.in"
+ARQ_API_URL = "https://arq.hamker.dev"
 
 if exists("config.py"):
     from config import *

@@ -59,8 +59,7 @@ async def help_command(_, message: Message):
     await message.reply_photo(
         "https://telegra.ph/file/94da698ebba27e2435a15.jpg",
         caption=f"Hi {mention}, I'm Anti-Spam Bot,"
-        + " I can protect your group from Spam and NSFW media using machine learning.",
-        + " Add me to your group now!",
+        + " I can protect your group from Spam and NSFW media using machine learning.\n\nAdd me to your group now!",
         reply_markup=kb,
     )
 

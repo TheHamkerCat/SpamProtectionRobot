@@ -1,3 +1,4 @@
+from pyrogram import enums
 from asyncio import gather, sleep
 from datetime import datetime
 from math import ceil

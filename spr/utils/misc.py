@@ -3,6 +3,7 @@ from datetime import datetime
 from math import ceil
 from time import time, ctime
 
+from pyrogram import enums
 from pyrogram.types import InlineKeyboardButton, ChatMemberUpdated
 
 
@@ -33,8 +34,8 @@ async def admins(chat_id: int):
         "last_updated_at": time(),
         "data": [
             member.user.id
-            async for member in spr.iter_chat_members(
-                chat_id, filter="administrators"
+            async for member in spr.get_chat_members(
+                chat_id, filter=enums.ChatMembersFilter.ADMINISTRATORS
             )
         ],
     }
@@ -51,8 +52,8 @@ async def admin_cache_func(_, cmu: ChatMemberUpdated):
             "last_updated_at": time(),
             "data": [
                 member.user.id
-                async for member in spr.iter_chat_members(
-                    cmu.chat.id, filter="administrators"
+                async for member in spr.get_chat_members(
+                    cmu.chat.id, filter=enums.ChatMembersFilter.ADMINISTRATORS
                 )
             ],
         }

@@ -47,9 +47,7 @@ $ cd SpamProtectionRobot
 Edit **config.env** With Own Values.
 
 ```sh
-$ sudo docker build . -t spr
-
-$ sudo docker run spr
+$ docker compose up --build
 ```
 
 ## Note

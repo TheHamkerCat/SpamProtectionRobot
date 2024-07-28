@@ -1,4 +1,4 @@
-pyrogram
+git+https://github.com/KurimuzonAkuma/pyrogram.git
 TgCrypto
 python-arq
 pykeyboard

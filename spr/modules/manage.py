@@ -1,4 +1,6 @@
-"""Turn detection on/off per chat, and manual scans"""
+"""Per chat settings (spam detection, NSFW detection, alerts), and manual scans"""
+from dataclasses import dataclass
+
 from telethon import events
 from telethon.errors import RPCError
 
@@ -10,12 +12,39 @@ __MODULE__ = "Manage"
 __HELP__ = """
 /anti_nsfw [ENABLE|DISABLE] - Enable or disable NSFW Detection.
 /anti_spam [ENABLE|DISABLE] - Enable or disable Spam Detection.
+/alerts [ENABLE|DISABLE] - Post a message in the chat when I delete spam or NSFW media or ban a spammer. On by default.
+/settings - Show this chat's settings.
 
 /nsfw_scan - Classify a media.
 /spam_scan - Get Spam predictions of replied message.
 """
 
-FEATURE_LABELS = {"nsfw": "NSFW Detection", "spam": "Spam Detection"}
+
+
+@dataclass(frozen=True)
+class Feature:
+    command: str
+    label: str
+    enabled_reply: str
+    disabled_reply: str
+
+
+FEATURES = {
+    "spam": Feature(
+        "anti_spam", "Spam detection", "Enabled Spam Detection.", "Disabled Spam Detection."
+    ),
+    "nsfw": Feature(
+        "anti_nsfw", "NSFW detection", "Enabled NSFW Detection.", "Disabled NSFW Detection."
+    ),
+    "alerts": Feature(
+        "alerts",
+        "Alerts",
+        "Alerts are on. When I delete spam or NSFW media or ban a spammer, "
+        "I post a short message about it here.",
+        "Alerts are off. I still delete spam and NSFW media and ban spammers, "
+        "but without posting about it here. If I lack admin rights, I still say so.",
+    ),
+}
 
 
 def in_group(event) -> bool:
@@ -37,9 +66,9 @@ async def can_manage(event) -> bool:
 
 
 async def toggle_feature(event, feature: str):
-    """Shared body of /anti_nsfw and /anti_spam"""
-    command_name = f"anti_{feature}"
-    label = FEATURE_LABELS[feature]
+    """Shared body of /anti_nsfw, /anti_spam and /alerts"""
+    details = FEATURES[feature]
+    command_name = details.command
     args = get_args(event)
     if len(args) != 2:
         return await event.reply(f"Usage: /{command_name} [ENABLE|DISABLE]")
@@ -55,7 +84,10 @@ async def toggle_feature(event, feature: str):
     changed = await event.client.db.set_chat_feature(event.chat_id, feature, enabled)
     if not changed:
         return await event.reply(f"Already {status}d.")
-    await event.reply(f"{status.capitalize()}d {label}.")
+    if enabled:
+        await event.reply(details.enabled_reply)
+    else:
+        await event.reply(details.disabled_reply)
 
 
 @events.register(events.NewMessage(pattern=command("anti_nsfw"), func=in_group))
@@ -66,6 +98,36 @@ async def nsfw_toggle_func(event):
 @events.register(events.NewMessage(pattern=command("anti_spam"), func=in_group))
 async def spam_toggle_func(event):
     await toggle_feature(event, "spam")
+
+
+@events.register(events.NewMessage(pattern=command("alerts"), func=in_group))
+async def alerts_toggle_func(event):
+    await toggle_feature(event, "alerts")
+
+
+def on_off(enabled: bool) -> str:
+    if enabled:
+        return "on"
+    return "off"
+
+
+@events.register(events.NewMessage(pattern=command("settings"), func=in_group))
+async def settings_command(event):
+    """Anyone can see the settings, only admins can change them"""
+    settings = await event.client.db.get_chat_settings(event.chat_id)
+    values = {
+        "spam": settings.spam_enabled,
+        "nsfw": settings.nsfw_enabled,
+        "alerts": settings.alerts_enabled,
+    }
+    lines = [
+        f"{details.label}: <b>{on_off(values[feature])}</b> (/{details.command})"
+        for feature, details in FEATURES.items()
+    ]
+    await event.reply(
+        "<b>Settings of this chat</b>\n" + "\n".join(lines)
+        + "\n\nAdmins can change them with the commands in brackets."
+    )
 
 
 @events.register(events.NewMessage(pattern=command("nsfw_scan")))

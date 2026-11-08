@@ -219,6 +219,31 @@ class WatcherTest(DatabaseTestCase):
         self.assertEqual(len(handled), 1)
         self.assertEqual(self.client.arq.nlp_calls, [])
 
+    async def test_alerts_off_deletes_silently(self):
+        await self.db.set_chat_feature(SUPERGROUP_ID, "alerts", False)
+        spam = self.event(make_user(), SPAM_TEXT, message_id=1)
+        nsfw = self.event(make_user(USER_ID + 1), media=PHOTO, message_id=2)
+        await self.check(spam)
+        await self.check(nsfw)
+        self.assertEqual(self.client.deleted, [(SUPERGROUP_ID, [1]), (SUPERGROUP_ID, [2])])
+        self.assertEqual(self.client.texts_to(SUPERGROUP_ID), [])
+        # The log channels are unchanged
+        self.assertEqual(len(self.client.texts_to(SPAM_LOG)), 1)
+        self.assertEqual(len(self.client.texts_to(NSFW_LOG)), 1)
+
+    async def test_alerts_off_bans_silently(self):
+        await self.db.set_chat_feature(SUPERGROUP_ID, "alerts", False)
+        await self.db.blacklist("user", USER_ID, "known spammer")
+        await self.check(self.event(make_user(), "hi"))
+        self.assertEqual(len(self.client.restricted), 1)
+        self.assertEqual(self.client.texts_to(SUPERGROUP_ID), [])
+
+    async def test_alerts_off_still_reports_missing_rights(self):
+        await self.db.set_chat_feature(SUPERGROUP_ID, "alerts", False)
+        self.client.delete_error = MessageDeleteForbiddenError(request=None)
+        await self.check(self.event(make_user(), SPAM_TEXT))
+        self.assertIn("I can't delete a message from", self.client.texts_to(SUPERGROUP_ID)[0])
+
     async def test_filter(self):
         self.assertTrue(is_watched_message(self.event(make_user(), "text")))
         self.assertTrue(is_watched_message(self.event(make_user(), media=PHOTO)))

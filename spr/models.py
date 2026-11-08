@@ -49,6 +49,10 @@ class Chat(Base):
     nsfw_enabled: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=text("true")
     )
+    # Off: spam/NSFW is deleted and spammers banned without a message in the chat
+    alerts_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true")
+    )
     blacklist_reason: Mapped[Optional[str]] = mapped_column(Text)
     blacklisted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     # Sender IDs never punished here (admins, the chat itself for anonymous

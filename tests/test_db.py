@@ -63,6 +63,10 @@ class DatabaseTest(DatabaseTestCase):
         settings = await self.db.get_chat_settings(-1001)
         self.assertFalse(settings.spam_enabled)
         self.assertTrue(settings.nsfw_enabled)
+        # Alerts are on unless a group turns them off
+        self.assertTrue(settings.alerts_enabled)
+        self.assertTrue(await self.db.set_chat_feature(-1001, "alerts", False))
+        self.assertFalse((await self.db.get_chat_settings(-1001)).alerts_enabled)
 
     async def test_votes(self):
         self.assertTrue(await self.db.add_vote(10, 1, 1, True))

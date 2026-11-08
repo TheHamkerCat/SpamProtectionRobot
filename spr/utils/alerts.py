@@ -1,6 +1,9 @@
 """Actions on detected spam / NSFW / blacklisted senders, and the
 reports about them. Reports never go out directly: they wait in
-client.reports (spr/reports.py) and are sent combined."""
+client.reports (spr/reports.py) and are sent combined.
+
+alerts=False (the chat's /alerts setting) leaves out the alerts in the
+chat; notices about missing admin rights and the log channels stay."""
 from telethon import utils
 from telethon.errors import (ChatAdminRequiredError, MessageDeleteForbiddenError,
                              UserAdminInvalidError)
@@ -86,7 +89,7 @@ async def delete_or_complain(event, sender, stats, action: str) -> bool:
     return False
 
 
-async def handle_nsfw(event, sender, result):
+async def handle_nsfw(event, sender, result, alerts: bool = True):
     client = event.client
     stats = await client.db.get_user_stats(event.sender_id)
     deleted = await delete_or_complain(event, sender, stats, "NSFW")
@@ -111,11 +114,11 @@ async def handle_nsfw(event, sender, result):
             buttons=lambda number, prefix: nsfw_review_row(prefix, media_id),
         ),
     )
-    if deleted:
+    if deleted and alerts:
         notify_chat(event, f"🚨 <b>NSFW ALERT</b> 🚔 Deleted a message from {sender_line}\n{scores}")
 
 
-async def handle_spam(event, sender, spam_probability: float):
+async def handle_spam(event, sender, spam_probability: float, alerts: bool = True):
     client = event.client
     stats = await client.db.get_user_stats(event.sender_id)
     if not await delete_or_complain(event, sender, stats, "spam"):
@@ -134,6 +137,8 @@ async def handle_spam(event, sender, spam_probability: float):
         buttons=lambda number, prefix: spam_vote_row(number, prefix, url),
     )
     client.reports.add(client.settings.spam_log_channel, log_report)
+    if not alerts:
+        return
     client.reports.add(
         event.chat_id,
         Report(
@@ -144,7 +149,7 @@ async def handle_spam(event, sender, spam_probability: float):
     )
 
 
-async def handle_blacklisted_sender(event, sender, stats):
+async def handle_blacklisted_sender(event, sender, stats, alerts: bool = True):
     """Ban a blacklisted sender and tell the chat"""
     sender_line = format_sender_line(sender, stats)
     if not await ban_sender(event, sender):
@@ -154,4 +159,5 @@ async def handle_blacklisted_sender(event, sender, stats):
             "Make me an admin with the Ban users right.",
         )
         return
-    notify_chat(event, f"🚨 <b>SPAMMER ALERT</b> 🚔 Banned {sender_line}")
+    if alerts:
+        notify_chat(event, f"🚨 <b>SPAMMER ALERT</b> 🚔 Banned {sender_line}")

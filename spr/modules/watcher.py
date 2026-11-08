@@ -63,7 +63,7 @@ def should_scan_text(text: str, stats) -> bool:
     return True
 
 
-async def scan_nsfw(event, sender) -> bool:
+async def scan_nsfw(event, sender, alerts: bool) -> bool:
     """Scan the media of a message. True if it was NSFW and handled."""
     client = event.client
     media_id = get_media_id(event.message)
@@ -86,11 +86,11 @@ async def scan_nsfw(event, sender) -> bool:
         return False
     if result is None or not result.is_nsfw:
         return False
-    await handle_nsfw(event, sender, result)
+    await handle_nsfw(event, sender, result, alerts=alerts)
     return True
 
 
-async def scan_spam(event, sender, stats, punish: bool):
+async def scan_spam(event, sender, stats, punish: bool, alerts: bool):
     """Score the text of a message. Every sender's score is stored, for
     the trust value; only senders that may be punished get deleted."""
     client = event.client
@@ -105,7 +105,7 @@ async def scan_spam(event, sender, stats, punish: bool):
         return
     await client.db.add_spam_prediction(event.sender_id, result.spam)
     if punish and result.is_spam:
-        await handle_spam(event, sender, result.spam_probability)
+        await handle_spam(event, sender, result.spam_probability, alerts=alerts)
 
 
 async def check_message(event):
@@ -129,10 +129,18 @@ async def check_message(event):
         return
 
     stats = await client.db.get_user_stats(sender_id)
+    # Off: punish without posting about it in the chat
+    alerts = chat_settings.alerts_enabled
     if not privileged:
         if stats.blacklisted:
-            return await handle_blacklisted_sender(event, sender, stats)
-        if chat_settings.nsfw_enabled and await scan_nsfw(event, sender):
+            return await handle_blacklisted_sender(event, sender, stats, alerts=alerts)
+        if chat_settings.nsfw_enabled and await scan_nsfw(event, sender, alerts):
             return
 
-    await scan_spam(event, sender, stats, punish=chat_settings.spam_enabled and not privileged)
+    await scan_spam(
+        event,
+        sender,
+        stats,
+        punish=chat_settings.spam_enabled and not privileged,
+        alerts=alerts,
+    )

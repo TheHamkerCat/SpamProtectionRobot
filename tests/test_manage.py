@@ -4,7 +4,8 @@ from telethon.errors import ChatAdminRequiredError
 from telethon.tl import types
 
 from spr.arq import ArqError
-from spr.modules.manage import (nsfw_scan_command, spam_scan_command,
+from spr.modules.manage import (alerts_toggle_func, nsfw_scan_command,
+                                settings_command, spam_scan_command,
                                 spam_toggle_func)
 from tests.fakes import (ADMIN_ID, SUDO_ID, SUPERGROUP_ID, DatabaseTestCase,
                          FakeArq, FakeClient, FakeMessageEvent, make_channel,
@@ -54,6 +55,50 @@ class ToggleTest(DatabaseTestCase):
         replies = await self.toggle(make_user())
         self.assertIn("can't read the admin list", replies[0])
         self.assertTrue(await self.spam_enabled())
+
+
+class AlertsSettingTest(DatabaseTestCase):
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        self.client = FakeClient(db=self.db)
+        self.client.participants[SUPERGROUP_ID] = [
+            (ADMIN_ID, types.ChannelParticipantAdmin(ADMIN_ID, 1, NOW, types.ChatAdminRights()))
+        ]
+
+    async def run_command(self, handler, sender, text):
+        event = FakeMessageEvent(self.client, sender, text)
+        await handler(event)
+        return event.reply_texts()
+
+    async def test_admin_turns_alerts_off_and_on(self):
+        replies = await self.run_command(alerts_toggle_func, make_user(ADMIN_ID), "/alerts disable")
+        self.assertTrue(replies[0].startswith("Alerts are off."))
+        self.assertFalse((await self.db.get_chat_settings(SUPERGROUP_ID)).alerts_enabled)
+        replies = await self.run_command(alerts_toggle_func, make_user(ADMIN_ID), "/alerts disable")
+        self.assertEqual(replies, ["Already disabled."])
+        replies = await self.run_command(alerts_toggle_func, make_user(ADMIN_ID), "/alerts enable")
+        self.assertTrue(replies[0].startswith("Alerts are on."))
+
+    async def test_regular_user_can_not_change_alerts(self):
+        replies = await self.run_command(alerts_toggle_func, make_user(), "/alerts disable")
+        self.assertEqual(replies, ["You don't have enough permissions"])
+        self.assertTrue((await self.db.get_chat_settings(SUPERGROUP_ID)).alerts_enabled)
+
+    async def test_usage(self):
+        replies = await self.run_command(alerts_toggle_func, make_user(ADMIN_ID), "/alerts")
+        self.assertEqual(replies, ["Usage: /alerts [ENABLE|DISABLE]"])
+
+    async def test_settings_for_anyone(self):
+        await self.db.set_chat_feature(SUPERGROUP_ID, "alerts", False)
+        replies = await self.run_command(settings_command, make_user(), "/settings")
+        self.assertEqual(
+            replies[0],
+            "<b>Settings of this chat</b>\n"
+            "Spam detection: <b>on</b> (/anti_spam)\n"
+            "NSFW detection: <b>on</b> (/anti_nsfw)\n"
+            "Alerts: <b>off</b> (/alerts)\n\n"
+            "Admins can change them with the commands in brackets.",
+        )
 
 
 class ScanCommandTest(DatabaseTestCase):

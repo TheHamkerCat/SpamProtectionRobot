@@ -74,7 +74,7 @@ async def run_checks(client, me):
         client.admins.attach()
         handler_count = len(client.list_event_handlers())
         return expect(
-            handler_count == 21 and sorted(help_modules) == ["devs", "info", "manage"],
+            handler_count == 23 and sorted(help_modules) == ["devs", "info", "manage"],
             f"{handler_count} handlers, help pages: {sorted(help_modules)}",
         )
 

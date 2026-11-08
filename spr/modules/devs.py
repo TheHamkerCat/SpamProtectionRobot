@@ -21,6 +21,8 @@ __HELP__ = """
 
 /blacklist [CHAT_ID|USER_ID] - Blacklist a chat/user.
 /whitelist [CHAT_ID|USER_ID] - Whitelist a chat/user.
+
+/migrate_sqlite - Reply to the old bot's db.sqlite3 file to import its users, chats and blacklist.
 """
 
 # Telegram's message length limit, longer output is sent as a file

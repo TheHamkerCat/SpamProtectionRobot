@@ -101,13 +101,6 @@ class DatabaseTest(DatabaseTestCase):
         await self.db.ignore_media(123)
         self.assertTrue(await self.db.is_media_ignored(123))
 
-    async def test_export_csv(self):
-        await self.db.add_spam_prediction(1, 5)
-        exported = await self.db.export_csv()
-        self.assertEqual(set(exported), {"users", "chats", "votes", "ignored_media"})
-        self.assertTrue(exported["users"].startswith(b"user_id,spam_data"))
-        self.assertIn(b"1,{5}", exported["users"])
-
 
 class ConcurrencyTest(DatabaseTestCase):
     """ORM sessions read, then write. Row locks must keep messages that

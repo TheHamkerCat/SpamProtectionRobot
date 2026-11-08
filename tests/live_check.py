@@ -10,13 +10,11 @@ in Telegram.
 import asyncio
 import sys
 import traceback
-import zipfile
 
 from dotenv import load_dotenv
 
 from spr.app import SESSION_DIR, log_in, register_modules, session_path
 from spr.arq import ArqClient, ArqError
-from spr.backup import build_backup
 from spr.client import SprClient
 from spr.core.commands import command, set_bot_username
 from spr.db import Database
@@ -74,7 +72,7 @@ async def run_checks(client, me):
         client.admins.attach()
         handler_count = len(client.list_event_handlers())
         return expect(
-            handler_count == 23 and sorted(help_modules) == ["devs", "info", "manage"],
+            handler_count == 24 and sorted(help_modules) == ["devs", "info", "manage"],
             f"{handler_count} handlers, help pages: {sorted(help_modules)}",
         )
 
@@ -134,10 +132,7 @@ async def run_checks(client, me):
     async def database_round_trip():
         await client.db.add_spam_prediction(me.id, 12.5)
         stats = await client.db.get_user_stats(me.id)
-        backup = await build_backup(client.db)
-        with zipfile.ZipFile(backup) as archive:
-            names = sorted(archive.namelist())
-        return expect(stats.trust == 87.5 and len(names) == 4, f"trust {stats.trust}, backup has {names}")
+        return expect(stats.trust == 87.5, f"trust {stats.trust}")
 
     await check("register handlers", wiring())
     await check("command matching with the real username", command_matching())
@@ -149,7 +144,7 @@ async def run_checks(client, me):
     await check("ARQ NSFW scan", arq_nsfw())
     await check("ARQ invalid key error", arq_bad_key())
     await check("upload the /start image", upload_start_image())
-    await check("Postgres + backup", database_round_trip())
+    await check("Postgres", database_round_trip())
 
 
 if __name__ == "__main__":

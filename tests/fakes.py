@@ -5,6 +5,7 @@ without a Telegram connection. The database is real (Postgres from
 compose.test.yml), the ARQ client is fake.
 """
 import os
+from pathlib import Path
 import unittest
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -252,6 +253,9 @@ class FakeClient:
         raise ValueError(f"Could not find the input entity for {query!r}")
 
     async def download_media(self, message, file=None, thumb=None):
+        if isinstance(file, str):
+            Path(file).write_bytes(self.media_bytes)
+            return file
         return self.media_bytes
 
     def add_event_handler(self, callback, event=None):
@@ -297,6 +301,7 @@ class FakeMessageEvent:
         self.via_bot_id = None
         self.chat = chat or make_channel(chat_id, title="Group", megagroup=True)
         self.replies = []  # (text, kwargs)
+        self.sent_replies = []  # SentMessage, to check later edits
         self.responses = []
         self.was_deleted = False
 
@@ -319,7 +324,9 @@ class FakeMessageEvent:
         if self.chat_id in self.client.send_errors:
             raise self.client.send_errors[self.chat_id]
         self.replies.append((text, kwargs))
-        return SentMessage(self.client, self.chat_id, text, kwargs)
+        message = SentMessage(self.client, self.chat_id, text, kwargs)
+        self.sent_replies.append(message)
+        return message
 
     async def respond(self, text="", **kwargs):
         self.responses.append((text, kwargs))

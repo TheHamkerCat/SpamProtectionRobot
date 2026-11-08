@@ -10,7 +10,7 @@ class RegisterModulesTest(unittest.TestCase):
         client = FakeClient()
         help_modules = register_modules(client)
         names = [f"{callback.__module__}.{callback.__name__}" for callback, _ in client.handlers]
-        self.assertEqual(len(names), 22)
+        self.assertEqual(len(names), 23)
         self.assertEqual(max(Counter(names).values()), 1)
         self.assertEqual(sorted(help_modules), ["devs", "info", "manage"])
 

@@ -94,8 +94,6 @@ class CachedSpamResult(Base):
     the text itself."""
 
     __tablename__ = "spam_results"
-    # Rebuilt by scanning again, and up to SPAM_DISK_CACHE_MB: not backed up
-    __table_args__ = {"info": {"backup": False}}
 
     text_hash: Mapped[bytes] = mapped_column(LargeBinary(16), primary_key=True)
     is_spam: Mapped[bool] = mapped_column(Boolean)
@@ -107,3 +105,22 @@ class CachedSpamResult(Base):
     last_used_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, server_default=text("now()"), index=True
     )
+
+
+class SqliteImport(Base):
+    """Imports of an old SQLite database (/migrate_sqlite), one row per file.
+    Users are imported in chunks; users_done_through is the last imported
+    SQLite rowid, so an interrupted import continues where it stopped."""
+
+    __tablename__ = "sqlite_imports"
+
+    file_hash: Mapped[bytes] = mapped_column(LargeBinary(32), primary_key=True)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, server_default=text("now()")
+    )
+    chats_done: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    users_done_through: Mapped[int] = mapped_column(
+        BigInteger, default=0, server_default=text("0")
+    )
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+

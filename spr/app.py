@@ -7,7 +7,6 @@ from telethon import events
 from telethon.errors import FloodWaitError
 
 from spr.arq import ArqClient
-from spr.backup import backup_loop
 from spr.client import SprClient
 from spr.core.commands import set_bot_username
 from spr.db import Database
@@ -109,7 +108,6 @@ async def run(settings):
         client.message_queue.start()
         background_tasks = [
             asyncio.create_task(client.reports.run()),
-            asyncio.create_task(backup_loop(client)),
             asyncio.create_task(cache_maintenance_loop(client)),
         ]
         shut_down_on_signals(client)

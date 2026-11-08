@@ -1,5 +1,4 @@
-git+https://github.com/KurimuzonAkuma/pyrogram.git
-TgCrypto
-python-arq
-pykeyboard
-python-dotenv
+Telethon==1.45.0
+aiohttp==3.14.5
+asyncpg==0.32.0
+python-dotenv==1.2.4

@@ -132,3 +132,6 @@ dmypy.json
 # Pyre type checker
 .pyre/
 .idea
+
+# Telegram session (see spr/app.py)
+data/

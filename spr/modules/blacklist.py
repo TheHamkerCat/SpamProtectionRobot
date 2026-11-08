@@ -1,110 +1,85 @@
-from pyrogram import filters
-from pyrogram.types import Message
+"""/blacklist and /whitelist, for sudo users only"""
+from telethon import events
+from telethon.errors import RPCError
 
-from spr import SPAM_LOG_CHANNEL, SUDOERS, spr
+from spr.core.commands import command
+from spr.core.entities import mention
 from spr.modules.info import get_info
-from spr.utils.db import (add_chat, add_user, blacklist_chat,
-                          blacklist_user, chat_exists,
-                          is_chat_blacklisted, is_user_blacklisted,
-                          user_exists, whitelist_chat, whitelist_user)
+from spr.utils.alerts import send_safely
 
 
-@spr.on_message(
-    filters.command("blacklist") & filters.user(SUDOERS), group=3
-)
-async def blacklist_func(_, message: Message):
-    err = "Enter a user/chat's id and give a reason."
-    if len(message.command) < 3:
-        return await message.reply_text(err)
-    id = message.text.split(None, 2)[1]
-    reason = message.text.split(None, 2)[2].strip()
-    if not reason or not id:
-        return await message.reply_text(err)
+def is_sudo(event) -> bool:
+    return event.sender_id in event.client.settings.sudoers
+
+
+def parse_entity_id(text: str):
+    """Non-zero int from text, else None"""
     try:
-        id = int(id)
+        value = int(text)
     except ValueError:
-        return await message.reply_text(err)
+        return None
+    return value or None
 
-    if id == 0:
-        return await message.reply_text(err)
 
-    if id < 0:
-        try:
-            chat = await spr.get_chat(id)
-        except Exception as e:
-            return await message.reply_text(str(e))
+def entity_kind(entity_id: int) -> str:
+    """Negative IDs are chats, positive IDs are users"""
+    if entity_id < 0:
+        return "chat"
+    return "user"
 
-        if not chat_exists(id):
-            add_chat(id)
-        if is_chat_blacklisted(id):
-            return await message.reply_text(
-                "This chat is already blacklisted."
-            )
-        blacklist_chat(id, reason)
-        await message.reply_text(f"Blacklisted chat {chat.title}")
-        msg = f"**BLACKLIST EVENT**\n{await get_info(id)}"
-        return await spr.send_message(SPAM_LOG_CHANNEL, text=msg)
 
-    if id in SUDOERS:
-        return await message.reply_text(
-            "This user is in SUDOERS and cannot be blacklisted."
-        )
+async def find_entity(event, entity_id: int):
+    """Entity for an ID, or None after telling the user why not"""
     try:
-        user = await spr.get_users(id)
-    except Exception as e:
-        return await message.reply_text(str(e))
-
-    if not user_exists(id):
-        add_user(id)
-    if is_user_blacklisted(id):
-        return await message.reply_text(
-            "This user is already blacklisted."
-        )
-    blacklist_user(id, reason)
-    await message.reply_text(f"Blacklisted user {user.mention}")
-    msg = f"**BLACKLIST EVENT**\n{await get_info(id)}"
-    await spr.send_message(SPAM_LOG_CHANNEL, text=msg)
+        return await event.client.get_entity(entity_id)
+    except (ValueError, RPCError) as error:
+        await event.reply(f"I can't find {entity_id}: {error}")
+        return None
 
 
-@spr.on_message(
-    filters.command("whitelist") & filters.user(SUDOERS), group=3
-)
-async def whitelist_func(_, message: Message):
-    err = "Enter a user/chat's id."
-    if len(message.command) != 2:
-        return await message.reply_text(err)
-    id = message.text.split(None, 1)[1]
-    try:
-        id = int(id)
-    except ValueError:
-        return await message.reply_text(err)
-    if id == 0:
-        return await message.reply_text(err)
-    if id < 0:
-        try:
-            chat = await spr.get_chat(id)
-        except Exception as e:
-            return await message.reply_text(str(e))
+@events.register(events.NewMessage(pattern=command("blacklist"), func=is_sudo))
+async def blacklist_func(event):
+    usage = "Enter a user/chat's id and give a reason."
+    parts = event.raw_text.split(None, 2)
+    if len(parts) < 3:
+        return await event.reply(usage)
+    entity_id = parse_entity_id(parts[1])
+    reason = parts[2].strip()
+    if not entity_id or not reason:
+        return await event.reply(usage)
 
-        if not chat_exists(id):
-            add_chat(id)
-        if not is_chat_blacklisted(id):
-            return await message.reply_text(
-                "This chat is already whitelisted."
-            )
-        whitelist_chat(id)
-        return await message.reply_text(f"Whitelisted {chat.title}")
+    kind = entity_kind(entity_id)
+    if kind == "user" and entity_id in event.client.settings.sudoers:
+        return await event.reply("This user is in SUDOERS and cannot be blacklisted.")
+    entity = await find_entity(event, entity_id)
+    if entity is None:
+        return
 
-    try:
-        user = await spr.get_users(id)
-    except Exception as e:
-        return await message.reply_text(str(e))
+    if not await event.client.db.blacklist(kind, entity_id, reason):
+        return await event.reply(f"This {kind} is already blacklisted.")
+    await event.reply(f"Blacklisted {kind} {mention(entity)}")
+    info = await get_info(event.client, entity_id)
+    await send_safely(
+        event.client,
+        event.client.settings.spam_log_channel,
+        f"<b>BLACKLIST EVENT</b>\n{info}",
+    )
 
-    if not user_exists(id):
-        add_user(id)
-    if not is_user_blacklisted(id):
-        return await message.reply_text(
-            "This user is already whitelisted."
-        )
-    whitelist_user(id)
-    return await message.reply_text(f"Whitelisted {user.mention}")
+
+@events.register(events.NewMessage(pattern=command("whitelist"), func=is_sudo))
+async def whitelist_func(event):
+    usage = "Enter a user/chat's id."
+    parts = event.raw_text.split()
+    if len(parts) != 2:
+        return await event.reply(usage)
+    entity_id = parse_entity_id(parts[1])
+    if not entity_id:
+        return await event.reply(usage)
+
+    kind = entity_kind(entity_id)
+    entity = await find_entity(event, entity_id)
+    if entity is None:
+        return
+    if not await event.client.db.whitelist(kind, entity_id):
+        return await event.reply(f"This {kind} is already whitelisted.")
+    await event.reply(f"Whitelisted {mention(entity)}")

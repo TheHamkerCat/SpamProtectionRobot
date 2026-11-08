@@ -1,0 +1,20 @@
+# Secrets and local state never go into the image
+.env
+.env.*
+data/
+*.session
+*.session-journal
+*.sqlite3
+config.py
+
+.git/
+.github/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.idea/
+.vscode/
+
+# Tests are mounted by compose.test.yml, not shipped
+tests/

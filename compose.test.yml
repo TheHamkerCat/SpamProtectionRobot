@@ -1,0 +1,54 @@
+# Tests:      docker compose -f compose.test.yml run --rm --build tests
+# Live check: docker compose -f compose.test.yml --env-file .env run --rm --build live
+#             (logs in with the real BOT_TOKEN and ARQ_API_KEY from .env)
+name: spr-test
+
+x-test-database: &test-database
+  DATABASE_URL: postgresql://spr:spr_test@postgres:5432/spr_test
+
+services:
+  postgres:
+    # same tag as docker-compose.yml
+    image: postgres:18.6-alpine3.24@sha256:123b17998ccaf47e53b502e8c6a1e79afd8f579c6f3eec83c563da026f957395
+    environment:
+      POSTGRES_USER: spr
+      POSTGRES_PASSWORD: spr_test
+      POSTGRES_DB: spr_test
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U spr -d spr_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  tests:
+    build: .
+    command: ["python3", "-m", "unittest", "discover", "-s", "tests", "-t", ".", "-v"]
+    environment:
+      <<: *test-database
+    volumes:
+      - ./tests:/app/tests:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  live:
+    build: .
+    profiles: ["live"]
+    command: ["python3", "-m", "tests.live_check"]
+    environment:
+      <<: *test-database
+      BOT_TOKEN: ${BOT_TOKEN:-}
+      ARQ_API_KEY: ${ARQ_API_KEY:-}
+      ARQ_API_URL: ${ARQ_API_URL:-}
+      API_ID: ${API_ID:-}
+      API_HASH: ${API_HASH:-}
+      SUDOERS: ${SUDOERS:-}
+      NSFW_LOG_CHANNEL: ${NSFW_LOG_CHANNEL:--1001000000001}
+      SPAM_LOG_CHANNEL: ${SPAM_LOG_CHANNEL:--1001000000002}
+    volumes:
+      - ./tests:/app/tests:ro
+    depends_on:
+      postgres:
+        condition: service_healthy

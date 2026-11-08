@@ -1,20 +1,23 @@
 {
     "name": "SpamProtectionRobot",
-    "description": "Anti Spam/NSFW Telegram Bot Written In Python With Pyrogram.",
+    "description": "Anti Spam/NSFW Telegram Bot Written In Python With Telethon.",
     "repository": "https://github.com/thehamkercat/SpamProtectionRobot",
     "logo": "https://upload.wikimedia.org/wikipedia/commons/c/c3/Python-logo-notext.svg",
     "keywords": [
-    "python3",
-    "telegram",
-    "bot",
-    "anti spam bot",
-    "telegram-bot",
-    "pyrogram",
-    "anti nsfw bot",
-    "SpamProtectionRobot",
-    "Spam Protection Bot"
+        "python3",
+        "telegram",
+        "bot",
+        "anti spam bot",
+        "telegram-bot",
+        "telethon",
+        "anti nsfw bot",
+        "SpamProtectionRobot",
+        "Spam Protection Bot"
     ],
     "stack": "container",
+    "addons": [
+        "heroku-postgresql"
+    ],
     "env": {
         "BOT_TOKEN": {
             "description": "Obtain a Telegram bot oken by contacting @BotFather",
@@ -34,6 +37,21 @@
         },
         "ARQ_API_KEY": {
             "description": "Get this from @ARQRobot.",
+            "required": true
+        },
+        "API_ID": {
+            "description": "Telegram API ID. 6 is the official Android app; your own is at https://my.telegram.org.",
+            "value": "6",
+            "required": true
+        },
+        "API_HASH": {
+            "description": "Telegram API hash that belongs to API_ID.",
+            "value": "eb06d4abfb49dc3eeb1aeb98ae0f581e",
+            "required": true
+        },
+        "ARQ_API_URL": {
+            "description": "Address of the ARQ server that scans for spam and NSFW.",
+            "value": "https://arq.hamker.dev",
             "required": true
         }
     }

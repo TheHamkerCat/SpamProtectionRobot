@@ -1,87 +1,86 @@
-import os
+"""Checks every group message: blacklisted senders, NSFW media, spam text.
 
-from pyrogram import filters
-from pyrogram.types import Message
+Sudo users, admins, anonymous admins and the group's linked channel are
+never punished. Senders posting as a channel are checked like users."""
+from telethon import events
+from telethon.errors import RPCError
 
-from spr import SUDOERS, arq, spr
-from spr.utils.db import (add_chat, add_user, chat_exists,
-                          is_chat_blacklisted, is_nsfw_downvoted,
-                          is_nsfw_enabled, is_spam_enabled,
-                          is_user_blacklisted, update_spam_data,
-                          user_exists)
-from spr.utils.functions import (delete_nsfw_notify,
-                                 delete_spam_notify, kick_user_notify)
-from spr.utils.misc import admins, get_file_id, get_file_unique_id
+from spr.arq import ArqError
+from spr.utils.alerts import handle_blacklisted_sender, handle_nsfw, handle_spam
+from spr.utils.media import download_for_scan, get_media, get_media_id
 
 
-@spr.on_message(
-    (
-        filters.document
-        | filters.photo
-        | filters.sticker
-        | filters.animation
-        | filters.video
-        | filters.text
-    )
-)
-async def message_watcher(_, message: Message):
-    user_id = None
-    chat_id = None
+def is_watched_message(event) -> bool:
+    """Group messages with text, or with a photo/file"""
+    if not event.is_group:
+        return False
+    return bool(event.raw_text) or get_media(event.message) is not None
 
-    if message.chat.type in ["group", "supergroup"]:
-        chat_id = message.chat.id
-        if not chat_exists(chat_id):
-            add_chat(chat_id)
-        if is_chat_blacklisted(chat_id):
-            await spr.leave_chat(chat_id)
 
-    if message.from_user:
-        if message.from_user.id:
-            user_id = message.from_user.id
-            if not user_exists(user_id):
-                add_user(user_id)
-            if is_user_blacklisted(user_id) and chat_id:
-                if user_id not in (await admins(chat_id)):
-                    await kick_user_notify(message)
+async def scan_nsfw(event, sender) -> bool:
+    """Scan the media of a message. True if it was NSFW and handled."""
+    client = event.client
+    media_id = get_media_id(event.message)
+    if media_id is None:
+        return False
+    if await client.db.is_media_ignored(media_id):
+        return False
+    image = await download_for_scan(client, event.message)
+    if not image:
+        return False
+    try:
+        result = await client.arq.nsfw_scan(image)
+    except ArqError as error:
+        print(f"NSFW scan failed in {event.chat_id}: {error}")
+        return False
+    if not result.is_nsfw:
+        return False
+    await handle_nsfw(event, sender, result)
+    return True
 
-    if not chat_id or not user_id:
-        return
 
-    file_id = get_file_id(message)
-    file_unique_id = get_file_unique_id(message)
-    if file_id and file_unique_id:
-        if user_id in SUDOERS or user_id in (await admins(chat_id)):
-            return
-        if is_nsfw_downvoted(file_unique_id):
-            return
-        file = await spr.download_media(file_id)
-        try:
-            resp = await arq.nsfw_scan(file=file)
-        except Exception:
-            try:
-                return os.remove(file)
-            except Exception:
-                return
-        os.remove(file)
-        if resp.ok:
-            if resp.result.is_nsfw:
-                if is_nsfw_enabled(chat_id):
-                    return await delete_nsfw_notify(
-                        message, resp.result
-                    )
-
-    text = message.text or message.caption
+async def scan_spam(event, sender, punish: bool):
+    """Score the text of a message. Every sender's score is stored, for
+    the trust value; only senders that may be punished get deleted."""
+    client = event.client
+    text = event.raw_text
     if not text:
         return
-    resp = await arq.nlp(text)
-    if not resp.ok:
+    try:
+        result = await client.arq.nlp(text)
+    except ArqError as error:
+        print(f"Spam scan failed in {event.chat_id}: {error}")
         return
-    result = resp.result[0]
-    update_spam_data(user_id, result.spam)
-    if not result.is_spam:
+    await client.db.add_spam_prediction(event.sender_id, result.spam)
+    if punish and result.is_spam:
+        await handle_spam(event, sender, result.spam_probability)
+
+
+@events.register(events.NewMessage(func=is_watched_message))
+async def message_watcher(event):
+    client = event.client
+    chat_id = event.chat_id
+    chat_settings = await client.db.get_chat_settings(chat_id)
+    if chat_settings.blacklisted:
+        return await client.delete_dialog(chat_id)
+
+    sender = await event.get_sender()
+    if sender is None:
         return
-    if not is_spam_enabled(chat_id):
+    # Marked ID: channels are "-100...", so they never clash with user IDs
+    sender_id = event.sender_id
+    try:
+        privileged = await client.admins.is_privileged(chat_id, sender_id)
+    except RPCError as error:
+        # Without the admin list, punishing anyone could hit an admin
+        print(f"Can't read the admins of {chat_id}: {error}")
         return
-    if user_id in SUDOERS or user_id in (await admins(chat_id)):
-        return
-    await delete_spam_notify(message, result.spam_probability)
+
+    if not privileged:
+        stats = await client.db.get_user_stats(sender_id)
+        if stats.blacklisted:
+            return await handle_blacklisted_sender(event, sender, stats)
+        if chat_settings.nsfw_enabled and await scan_nsfw(event, sender):
+            return
+
+    await scan_spam(event, sender, punish=chat_settings.spam_enabled and not privileged)

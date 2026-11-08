@@ -30,6 +30,9 @@ class Settings:
     api_id: int
     api_hash: str
     arq_api_url: str
+    # Megabytes for spam results kept in memory / in Postgres, 0 = off
+    spam_memory_cache_mb: int
+    spam_disk_cache_mb: int
 
 
 class _SettingsReader:
@@ -56,6 +59,15 @@ class _SettingsReader:
         except ValueError:
             self.errors.append(f"{name} must be a number, got {value!r}. {hint}")
             return None
+
+    def megabytes(self, name: str, hint: str) -> Optional[int]:
+        value = self.number(name, hint)
+        if value is None:
+            return None
+        if value < 0:
+            self.errors.append(f"{name} must be 0 or more, got {value}. {hint}")
+            return None
+        return value
 
     def channel_id(self, name: str, hint: str) -> Optional[int]:
         value = self.number(name, hint)
@@ -118,6 +130,8 @@ def load_settings(env: Mapping[str, str] = os.environ) -> Settings:
         api_id=read.number("API_ID", COPY_FROM_EXAMPLE),
         api_hash=read.text("API_HASH", COPY_FROM_EXAMPLE),
         arq_api_url=arq_api_url,
+        spam_memory_cache_mb=read.megabytes("SPAM_MEMORY_CACHE_MB", COPY_FROM_EXAMPLE),
+        spam_disk_cache_mb=read.megabytes("SPAM_DISK_CACHE_MB", COPY_FROM_EXAMPLE),
     )
 
     if read.errors:

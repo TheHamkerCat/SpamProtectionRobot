@@ -15,8 +15,14 @@ from telethon.tl.patched import Message
 
 from spr.admins import AdminCache
 from spr.arq import NsfwResult, SpamResult
+from spr.cache import AsyncLruCache
+from spr.reports import ReportQueue
+from spr.scan_cache import SpamResultCache
 from spr.core.commands import set_bot_username
-from spr.db import TABLES, Database
+from sqlalchemy import text
+
+from spr.db import Database
+from spr.models import Base
 from spr.settings import Settings
 
 SUDO_ID = 1000
@@ -43,6 +49,8 @@ def make_settings(**overrides) -> Settings:
         api_id=6,
         api_hash="hash",
         arq_api_url="https://arq.example",
+        spam_memory_cache_mb=1,
+        spam_disk_cache_mb=1,
     )
     values.update(overrides)
     return Settings(**values)
@@ -133,15 +141,40 @@ class SentMessage:
         self.edits.append(text)
 
 
+class FakeAdminStore:
+    """The two Database methods AdminCache uses, in memory"""
+
+    def __init__(self):
+        self.stored = {}  # chat_id: (ids, fetched_at)
+
+    async def get_privileged_ids(self, chat_id):
+        return self.stored.get(chat_id)
+
+    async def store_privileged_ids(self, chat_id, ids):
+        self.stored[chat_id] = (frozenset(ids), utc_now())
+
+
 class FakeClient:
-    """Stands in for SprClient"""
+    """Stands in for SprClient. Without a database, admin lists are kept
+    in a FakeAdminStore."""
 
     def __init__(self, db=None, settings=None, arq=None):
         self.settings = settings or make_settings()
-        self.db = db
+        self.db = db if db is not None else FakeAdminStore()
         self.arq = arq or FakeArq()
-        self.admins = AdminCache(self)
+        self.admins = AdminCache(self, fetches_per_second=10_000)
+        self.reports = ReportQueue(self, priority_chats=(SPAM_LOG, NSFW_LOG), sends_per_second=10_000)
+        # The disk layer needs the real database
+        disk_db = db if isinstance(db, Database) else None
+        self.spam_cache = SpamResultCache(
+            self.settings.spam_memory_cache_mb,
+            self.settings.spam_disk_cache_mb if disk_db else 0,
+            disk_db,
+        )
+        self.nsfw_cache = AsyncLruCache(100)
+        self.message_queue = None
         self.help_modules = {}
+        self.fetch_count = 0  # admin list fetches
         self.sent = []  # SentMessage
         self.deleted = []  # (chat_id, [message ids])
         self.left = []  # chat IDs
@@ -192,6 +225,7 @@ class FakeClient:
         self.restricted.append((chat, user.id, kwargs))
 
     async def iter_participants(self, chat_id, filter=None):
+        self.fetch_count += 1
         if self.participants_error:
             raise self.participants_error
         for user_id, participant in self.participants.get(chat_id, []):
@@ -222,6 +256,10 @@ class FakeClient:
 
     def add_event_handler(self, callback, event=None):
         self.handlers.append((callback, event))
+
+    async def flush_reports(self):
+        """Send the queued reports now"""
+        await self.reports.flush()
 
     def texts_to(self, chat_id) -> list:
         return [message.text for message in self.sent if message.chat_id == chat_id]
@@ -297,9 +335,12 @@ class FakeMessageEvent:
 
 
 class FakeButton:
-    def __init__(self, text, url=None):
+    """A button read back from a message (telethon MessageButton)"""
+
+    def __init__(self, text, url=None, data=None):
         self.text = text
         self.url = url
+        self.data = data
 
 
 class FakeLogMessage:
@@ -352,12 +393,25 @@ def utc_now():
 
 @unittest.skipUnless(DATABASE_URL, "needs DATABASE_URL (run through compose.test.yml)")
 class DatabaseTestCase(unittest.IsolatedAsyncioTestCase):
-    """Fresh, empty tables for every test"""
+    """Schema from the real migrations, empty tables for every test"""
 
     async def asyncSetUp(self):
         setup_bot_username()
         self.db = await Database.connect(DATABASE_URL)
-        await self.db._pool.execute(f"TRUNCATE {', '.join(TABLES)}")
+        await self.db.migrate()
+        tables = ", ".join(table.name for table in Base.metadata.sorted_tables)
+        await self.sql(f"TRUNCATE {tables}")
 
     async def asyncTearDown(self):
         await self.db.close()
+
+    async def sql(self, query: str):
+        """Run SQL, return the first value of the result if there is one"""
+        async with self.db._engine.begin() as connection:
+            result = await connection.execute(text(query))
+            if result.returns_rows:
+                return result.scalar()
+            return None
+
+    async def count(self, table: str) -> int:
+        return await self.sql(f"SELECT count(*) FROM {table}")

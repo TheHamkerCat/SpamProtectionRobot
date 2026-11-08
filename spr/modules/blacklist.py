@@ -5,7 +5,7 @@ from telethon.errors import RPCError
 from spr.core.commands import command
 from spr.core.entities import mention
 from spr.modules.info import get_info
-from spr.utils.alerts import send_safely
+from spr.reports import Report
 
 
 def is_sudo(event) -> bool:
@@ -59,10 +59,9 @@ async def blacklist_func(event):
         return await event.reply(f"This {kind} is already blacklisted.")
     await event.reply(f"Blacklisted {kind} {mention(entity)}")
     info = await get_info(event.client, entity_id)
-    await send_safely(
-        event.client,
+    event.client.reports.add(
         event.client.settings.spam_log_channel,
-        f"<b>BLACKLIST EVENT</b>\n{info}",
+        Report(f"<b>BLACKLIST EVENT</b>\n{info}"),
     )
 
 

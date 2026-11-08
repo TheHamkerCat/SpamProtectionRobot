@@ -9,14 +9,12 @@ in Telegram.
 """
 import asyncio
 import sys
-import tempfile
 import traceback
 import zipfile
-from pathlib import Path
 
 from dotenv import load_dotenv
 
-from spr.app import register_modules
+from spr.app import SESSION_DIR, log_in, register_modules, session_path
 from spr.arq import ArqClient, ArqError
 from spr.backup import build_backup
 from spr.client import SprClient
@@ -51,11 +49,15 @@ async def main():
     load_dotenv(".env")
     settings = load_settings()
     db = await Database.connect(settings.database_url)
+    await db.migrate()
     arq = ArqClient(settings.arq_api_url, settings.arq_api_key)
-    session = Path(tempfile.mkdtemp()) / "live"
+    # Kept in a volume (compose.test.yml): every new session is a new
+    # login, and Telegram limits how many logins a token may do
+    SESSION_DIR.mkdir(exist_ok=True)
+    session = session_path(settings.bot_token, name="live-check")
     client = SprClient(str(session), settings, db, arq)
     try:
-        await client.start(bot_token=settings.bot_token)
+        await log_in(client, settings.bot_token)
         me = await client.get_me()
         set_bot_username(me.username)
         results.append((me.bot, "log in with BOT_TOKEN", f"@{me.username} (id {me.id}, bot={me.bot})"))
@@ -72,7 +74,7 @@ async def run_checks(client, me):
         client.admins.attach()
         handler_count = len(client.list_event_handlers())
         return expect(
-            handler_count == 20 and sorted(help_modules) == ["devs", "info", "manage"],
+            handler_count == 21 and sorted(help_modules) == ["devs", "info", "manage"],
             f"{handler_count} handlers, help pages: {sorted(help_modules)}",
         )
 

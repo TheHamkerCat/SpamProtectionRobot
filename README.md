@@ -55,12 +55,31 @@ $ heroku addons:create heroku-postgresql:essential-0
 ```
 
 
+# Database changes
+
+The bot applies database migrations (Alembic) by itself at startup. After changing `spr/models.py`, create a migration and commit the new file from `spr/migrations/versions`:
+
+```sh
+$ docker compose -f compose.test.yml run --rm --build alembic revision --autogenerate -m "what changed"
+```
+
+This runs in Docker against a throwaway database, never the real one. Any other alembic command works the same way, e.g. `... run --rm alembic check`.
+
+To see which migration the real database is on:
+
+```sh
+$ docker compose run --rm bot alembic current
+```
+
+
 # Tests
 
 ```sh
 $ docker compose -f compose.test.yml run --rm --build tests
 
 $ docker compose -f compose.test.yml --env-file .env run --rm --build live
+
+$ docker compose -f compose.test.yml run --rm --build benchmark
 
 $ docker compose -f compose.test.yml down
 ```

@@ -10,9 +10,6 @@ class InfoTest(DatabaseTestCase):
         self.client.entities[USER_ID] = make_user(first_name="Bob <script>")
         self.client.entities["somegroup"] = make_channel(SUPERGROUP_ID, title="G", username="somegroup", megagroup=True)
 
-    async def count(self, table):
-        return await self.db._pool.fetchval(f"SELECT count(*) FROM {table}")
-
     async def test_user_info_is_read_only_and_escaped(self):
         info = await get_info(self.client, str(USER_ID))
         self.assertIn(f"<b>ID:</b> {USER_ID}", info)

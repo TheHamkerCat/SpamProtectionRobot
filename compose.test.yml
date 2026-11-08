@@ -1,6 +1,8 @@
 # Tests:      docker compose -f compose.test.yml run --rm --build tests
 # Live check: docker compose -f compose.test.yml --env-file .env run --rm --build live
 #             (logs in with the real BOT_TOKEN and ARQ_API_KEY from .env)
+# Alembic:    docker compose -f compose.test.yml run --rm --build alembic revision --autogenerate -m "what changed"
+#             (any alembic command, against the throwaway database)
 name: spr-test
 
 x-test-database: &test-database
@@ -37,6 +39,7 @@ services:
     build: .
     profiles: ["live"]
     command: ["python3", "-m", "tests.live_check"]
+    # The Telegram session survives between runs, see tests/live_check.py
     environment:
       <<: *test-database
       BOT_TOKEN: ${BOT_TOKEN:-}
@@ -44,11 +47,44 @@ services:
       ARQ_API_URL: ${ARQ_API_URL:-}
       API_ID: ${API_ID:-}
       API_HASH: ${API_HASH:-}
+      SPAM_MEMORY_CACHE_MB: ${SPAM_MEMORY_CACHE_MB:-}
+      SPAM_DISK_CACHE_MB: ${SPAM_DISK_CACHE_MB:-}
       SUDOERS: ${SUDOERS:-}
       NSFW_LOG_CHANNEL: ${NSFW_LOG_CHANNEL:--1001000000001}
       SPAM_LOG_CHANNEL: ${SPAM_LOG_CHANNEL:--1001000000002}
     volumes:
       - ./tests:/app/tests:ro
+      - live-session:/app/data
     depends_on:
       postgres:
         condition: service_healthy
+
+  benchmark:
+    build: .
+    profiles: ["tools"]
+    command: ["python3", "-m", "tests.benchmark"]
+    environment:
+      <<: *test-database
+    volumes:
+      - ./tests:/app/tests:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  alembic:
+    build: .
+    profiles: ["tools"]
+    # Brings the throwaway database to the latest migration first, so
+    # autogenerate only writes what spr/models.py added since then
+    entrypoint: ["sh", "-c", "alembic upgrade head && exec alembic \"$$@\"", "alembic"]
+    environment:
+      <<: *test-database
+    volumes:
+      # New migration files land in the repo
+      - ./spr/migrations:/app/spr/migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  live-session:

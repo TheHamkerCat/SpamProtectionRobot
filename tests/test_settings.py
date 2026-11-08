@@ -12,6 +12,8 @@ VALID_ENV = {
     "API_ID": "6",
     "API_HASH": "eb06d4abfb49dc3eeb1aeb98ae0f581e",
     "ARQ_API_URL": "https://arq.hamker.dev",
+    "SPAM_MEMORY_CACHE_MB": "64",
+    "SPAM_DISK_CACHE_MB": "0",
 }
 
 
@@ -30,6 +32,7 @@ class LoadSettingsTest(unittest.TestCase):
         names = (
             "BOT_TOKEN", "NSFW_LOG_CHANNEL", "SPAM_LOG_CHANNEL", "ARQ_API_KEY",
             "DATABASE_URL", "API_ID", "API_HASH", "ARQ_API_URL",
+            "SPAM_MEMORY_CACHE_MB", "SPAM_DISK_CACHE_MB",
         )
         for name in names:
             self.assertIn(f"{name} is missing", message)
@@ -45,6 +48,7 @@ class LoadSettingsTest(unittest.TestCase):
             API_ID="six",
             DATABASE_URL="mysql://x",
             ARQ_API_URL="arq.hamker.dev",
+            SPAM_DISK_CACHE_MB="-1",
         )
         with self.assertRaises(SettingsError) as raised:
             load_settings(env)
@@ -54,6 +58,7 @@ class LoadSettingsTest(unittest.TestCase):
         self.assertIn("API_ID must be a number", message)
         self.assertIn("DATABASE_URL must start with", message)
         self.assertIn("ARQ_API_URL must start with https://", message)
+        self.assertIn("SPAM_DISK_CACHE_MB must be 0 or more", message)
         # The token is a secret and must never be printed
         self.assertNotIn("secret-token-without-colon", message)
 

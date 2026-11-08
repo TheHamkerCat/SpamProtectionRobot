@@ -1,10 +1,13 @@
 """Daily database backup are sent to every sudo user as a zip of CSV files."""
 import asyncio
 import io
+import logging
 import zipfile
 from datetime import datetime, timedelta, timezone
 
 from telethon.errors import RPCError
+
+logger = logging.getLogger(__name__)
 
 SECONDS_PER_DAY = 86400
 
@@ -29,7 +32,7 @@ async def send_backup(client):
             await client.send_file(user_id, backup, force_document=True)
         except (RPCError, ValueError) as error:
             # ValueError: the user never started the bot, so it can't message them
-            print(f"Can't send the backup to {user_id}: {error}")
+            logger.warning("Can't send the backup to %s: %s", user_id, error)
 
 
 def seconds_until_midnight(now: datetime) -> float:
@@ -42,9 +45,9 @@ def seconds_until_midnight(now: datetime) -> float:
 async def backup_loop(client):
     """One backup at startup, then one every day at 00:00 UTC"""
     while True:
-        print("BACKING UP DB...")
+        logger.info("Sending the database backup")
         try:
             await send_backup(client)
-        except Exception as error:
-            print(f"Backup failed: {error!r}")
+        except Exception:
+            logger.exception("Backup failed")
         await asyncio.sleep(seconds_until_midnight(datetime.now(timezone.utc)))

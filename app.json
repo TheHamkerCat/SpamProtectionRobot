@@ -53,6 +53,16 @@
             "description": "Address of the ARQ server that scans for spam and NSFW.",
             "value": "https://arq.hamker.dev",
             "required": true
+        },
+        "SPAM_MEMORY_CACHE_MB": {
+            "description": "Megabytes of memory for recent spam scan results. 0 turns it off.",
+            "value": "64",
+            "required": true
+        },
+        "SPAM_DISK_CACHE_MB": {
+            "description": "Megabytes of the database for spam scan results of short messages. 0 turns it off. The essential-0 Heroku Postgres plan has about 1 GB in total: use 512 or less there.",
+            "value": "4096",
+            "required": true
         }
     }
 }

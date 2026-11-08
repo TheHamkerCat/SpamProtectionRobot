@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from telethon.errors import UserIsBlockedError
 
+from spr.arq import SpamResult
 from spr.backup import build_backup, seconds_until_midnight, send_backup
 from tests.fakes import DatabaseTestCase, FakeClient, make_settings
 
@@ -18,6 +19,12 @@ class BackupTest(DatabaseTestCase):
                 sorted(archive.namelist()),
                 ["chats.csv", "ignored_media.csv", "users.csv", "votes.csv"],
             )
+
+    async def test_cache_table_is_left_out(self):
+        await self.db.store_spam_result(b"k" * 16, SpamResult(False, 1, 1.0, 99.0, False))
+        backup = await build_backup(self.db)
+        with zipfile.ZipFile(backup) as archive:
+            self.assertNotIn("spam_results.csv", archive.namelist())
 
     async def test_only_the_database_is_sent(self):
         client = FakeClient(db=self.db, settings=make_settings(sudoers=frozenset({1, 2, 3})))

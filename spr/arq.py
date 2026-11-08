@@ -1,8 +1,8 @@
 """Client for the two ARQ endpoints the bot uses: spam (nlp) and NSFW scans."""
-import asyncio
 from dataclasses import dataclass, fields
+from typing import Optional
 
-import aiohttp
+import httpx
 
 ARQ_TIMEOUT_SECONDS = 30
 
@@ -43,30 +43,28 @@ def _parse(result_class, data):
 
 
 class ArqClient:
-    def __init__(self, api_url: str, api_key: str, timeout: float = ARQ_TIMEOUT_SECONDS):
-        self._api_url = api_url.rstrip("/")
-        self._api_key = api_key
-        self._timeout = aiohttp.ClientTimeout(total=timeout)
-        self._session = None
-
-    def _get_session(self) -> aiohttp.ClientSession:
-        # Created on first use, so it binds to the running event loop
-        if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession(
-                headers={"X-API-KEY": self._api_key}, timeout=self._timeout
-            )
-        return self._session
+    def __init__(
+        self,
+        api_url: str,
+        api_key: str,
+        timeout: float = ARQ_TIMEOUT_SECONDS,
+        transport: Optional[httpx.AsyncBaseTransport] = None,
+    ):
+        # transport: tests pass an httpx.MockTransport instead of the network
+        self._client = httpx.AsyncClient(
+            base_url=api_url.rstrip("/"),
+            headers={"X-API-KEY": api_key},
+            timeout=timeout,
+            transport=transport,
+        )
 
     async def close(self):
-        if self._session is not None:
-            await self._session.close()
+        await self._client.aclose()
 
     async def nsfw_scan(self, image: bytes) -> NsfwResult:
-        form = aiohttp.FormData()
-        form.add_field(
-            "file", image, filename="file", content_type="application/octet-stream"
+        result = await self._post(
+            "nsfw_scan", files={"file": ("file", image, "application/octet-stream")}
         )
-        result = await self._post("nsfw_scan", data=form)
         return _parse(NsfwResult, result)
 
     async def nlp(self, text: str) -> SpamResult:
@@ -77,20 +75,22 @@ class ArqClient:
 
     async def _post(self, route: str, **kwargs):
         """POST to ARQ, return the "result" field of the response"""
-        url = f"{self._api_url}/{route}"
         try:
-            async with self._get_session().post(url, **kwargs) as response:
-                if response.status in (401, 403):
-                    raise ArqError(
-                        "The ARQ API key is not valid. Get a new one from @ARQRobot."
-                    )
-                if response.status == 429:
-                    raise ArqError("Too many ARQ requests. Try again in a minute.")
-                if response.status >= 400:
-                    raise ArqError(f"ARQ request failed (HTTP {response.status}).")
-                body = await response.json(content_type=None)
-        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as error:
+            response = await self._client.post(route, **kwargs)
+        except httpx.HTTPError as error:
+            # Connection problems and timeouts
             raise ArqError("Can't reach the ARQ server. Try again later.") from error
+
+        if response.status_code in (401, 403):
+            raise ArqError("The ARQ API key is not valid. Get a new one from @ARQRobot.")
+        if response.status_code == 429:
+            raise ArqError("Too many ARQ requests. Try again in a minute.")
+        if response.status_code >= 400:
+            raise ArqError(f"ARQ request failed (HTTP {response.status_code}).")
+        try:
+            body = response.json()
+        except ValueError as error:
+            raise ArqError("ARQ sent an unexpected response.") from error
 
         if not isinstance(body, dict):
             raise ArqError("ARQ sent an unexpected response.")

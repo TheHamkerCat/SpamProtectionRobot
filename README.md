@@ -35,10 +35,18 @@ $ docker compose up -d --build
 
 # Run Directly
 
-```sh
-$ pip3 install -r requirements.txt
+Needs [uv](https://docs.astral.sh/uv/).
 
-$ python3 -m spr
+```sh
+$ uv sync
+
+$ uv run python -m spr
+```
+
+After changing dependencies in **pyproject.toml**, update **uv.lock** (in Docker):
+
+```sh
+$ docker run --rm -v "$PWD:/app" -w /app python:3.12.16-slim-trixie sh -c "pip install -q uv==0.13.7 && uv lock"
 ```
 
 

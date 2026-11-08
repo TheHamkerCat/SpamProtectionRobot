@@ -1,0 +1,20 @@
+[project]
+name = "spamprotectionrobot"
+version = "1.0.0"
+description = "Anti spam / NSFW Telegram bot, written in Python with Telethon"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    "telethon==1.45.0",
+    "httpx>=0.28.1,<0.29",
+    "asyncpg>=0.32.0,<0.33",
+    "sqlalchemy[asyncio]>=2.1.8,<2.2",
+    "alembic>=1.20.1,<2",
+    "python-dotenv>=1.2.4,<2",
+    "uvloop>=0.23.0,<0.24",
+]
+
+[tool.uv]
+# An application, not a library: uv installs the dependencies only
+package = false

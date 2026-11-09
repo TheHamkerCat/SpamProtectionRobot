@@ -13,6 +13,7 @@ from telethon import events
 from telethon.errors import RPCError
 
 from spr.arq import ArqError
+from spr.core.text import plain_letters
 from spr.db import SPAM_HISTORY_SIZE
 from spr.utils.alerts import handle_blacklisted_sender, handle_nsfw, handle_spam
 from spr.utils.media import download_for_scan, get_media, get_media_id
@@ -94,18 +95,23 @@ async def scan_spam(event, sender, stats, punish: bool, alerts: bool):
     """Score the text of a message. Every sender's score is stored, for
     the trust value; only senders that may be punished get deleted."""
     client = event.client
-    text = event.raw_text
+    # Links and words written in look-alike letters are found too
+    text = plain_letters(event.raw_text or "")
     if not text or not should_scan_text(text, stats):
         return
     # Repeated texts (spam raids, common short messages) are scanned once
     try:
-        result = await client.spam_cache.get(text, lambda: client.arq.nlp(text))
+        model = await client.arq.spam_model()
+        result = await client.spam_cache.get(text, lambda: client.arq.nlp(text), model.version)
+        if result.model_version != model.version:
+            # ARQ was retrained since the bot last asked: its new threshold
+            model = await client.arq.spam_model(result.model_version)
     except ArqError as error:
         logger.warning("Spam scan failed in %s: %s", event.chat_id, error)
         return
     await client.db.add_spam_prediction(event.sender_id, result.spam)
-    if punish and result.is_spam:
-        await handle_spam(event, sender, result.spam_probability, alerts=alerts)
+    if punish and result.spam > model.spam_above:
+        await handle_spam(event, sender, result, alerts=alerts)
 
 
 async def check_message(event):

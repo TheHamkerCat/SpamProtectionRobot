@@ -104,11 +104,13 @@ async def run_checks(client, me):
         return expect(info is None, "unknown username -> not found")
 
     async def arq_spam():
+        model = await client.arq.spam_model()
         spam = await client.arq.nlp(SPAM_TEXT)
         ham = await client.arq.nlp(HAM_TEXT)
         return expect(
-            spam.is_spam and not ham.is_spam,
-            f"spam text: {spam.spam_probability} %, normal text: {ham.spam_probability} %",
+            spam.spam > model.spam_above > ham.spam,
+            f"model {model.version}, deletes above {model.spam_above} %: spam text {spam.spam} % "
+            f"({spam.category}), normal text {ham.spam} %",
         )
 
     async def arq_nsfw():

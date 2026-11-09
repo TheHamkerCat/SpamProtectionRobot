@@ -3,9 +3,17 @@ import unittest
 
 import httpx
 
-from spr.arq import ArqClient, ArqError, NsfwResult, SpamResult
+from spr.arq import ArqClient, ArqError, NsfwResult, SpamModel, SpamResult
 
-NLP_RESULT = {"is_spam": True, "spam_probability": 99, "spam": 98.6, "ham": 1.4, "profanity": False, "cache": False}
+# ARQ's /nlp answer for one message, and its /nlp/model answer
+NLP_RESULT = {
+    "spam": 0.9863, "category": "crypto_trading", "category_probabilities": {"crypto_trading": 0.81},
+    "harm": 2, "harm_probabilities": [0.02, 0.1, 0.88], "abusive": 0.0123, "language": "english",
+}
+MODEL_INFO = {
+    "version": "20261109-test", "created": "2026-11-09T00:00:00+00:00",
+    "thresholds": {"strict": {"spam_above": 0.7175}, "normal": {"spam_above": 0.8826}},
+}
 NSFW_RESULT = {"drawings": 3.2, "hentai": 3.6, "neutral": 93.0, "porn": 0.02, "sexy": 0.03, "is_nsfw": False}
 
 
@@ -14,6 +22,7 @@ class ArqClientTest(unittest.IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self):
         self.mode = "ok"
+        self.version = MODEL_INFO["version"]
         self.requests = []
         transport = httpx.MockTransport(self.handle)
         self.arq = ArqClient("http://arq.test/", "test-key", transport=transport)
@@ -41,15 +50,33 @@ class ArqClientTest(unittest.IsolatedAsyncioTestCase):
         if self.mode == "wrong_shape":
             return httpx.Response(200, json={"ok": True, "result": [{"unexpected": 1}]})
         if request.url.path == "/nlp":
-            return httpx.Response(200, json={"ok": True, "result": [NLP_RESULT]})
+            return httpx.Response(200, json={"ok": True, "model_version": self.version, "result": [NLP_RESULT]})
+        if request.url.path == "/nlp/model":
+            return httpx.Response(200, json={"ok": True, "result": {**MODEL_INFO, "version": self.version}})
         return httpx.Response(200, json={"ok": True, "result": NSFW_RESULT})
 
     async def test_nlp(self):
         result = await self.arq.nlp("buy now")
-        self.assertEqual(result, SpamResult(True, 99, 98.6, 1.4, False))
+        self.assertEqual(result, SpamResult(98.63, "crypto_trading", 2, 1.23, "english", "20261109-test"))
         method, path, key, body = self.requests[0]
         self.assertEqual((method, path, key), ("POST", "/nlp", "test-key"))
         self.assertEqual(json.loads(body), {"messages": ["buy now"]})
+
+    async def test_spam_model_is_read_once_until_the_version_changes(self):
+        model = await self.arq.spam_model()
+        self.assertEqual(model, SpamModel("20261109-test", 71.75))
+        await self.arq.spam_model()
+        await self.arq.spam_model("20261109-test")
+        self.assertEqual([r[:2] for r in self.requests], [("GET", "/nlp/model")])
+        # /nlp reported another version: read again
+        self.version = "20261110-new"
+        self.assertEqual((await self.arq.spam_model("20261110-new")).version, "20261110-new")
+        self.assertEqual(len(self.requests), 2)
+
+    async def test_spam_model_with_a_bad_answer(self):
+        self.mode = "wrong_shape"
+        with self.assertRaises(ArqError):
+            await self.arq.spam_model()
 
     async def test_nsfw_scan_uploads_file_field(self):
         result = await self.arq.nsfw_scan(b"\xff\xd8image")

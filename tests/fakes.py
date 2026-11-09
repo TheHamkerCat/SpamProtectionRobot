@@ -15,7 +15,7 @@ from telethon.tl import types
 from telethon.tl.patched import Message
 
 from spr.admins import AdminCache
-from spr.arq import NsfwResult, SpamResult
+from spr.arq import NsfwResult, SpamModel, SpamResult
 from spr.cache import AsyncLruCache
 from spr.reports import ReportQueue
 from spr.scan_cache import SpamResultCache
@@ -100,15 +100,32 @@ def make_message(text="", media=None, chat_id=SUPERGROUP_ID, message_id=100):
     return Message(id=message_id, peer_id=peer, date=None, message=text, media=media)
 
 
-class FakeArq:
-    """Returns preset results, or raises a preset error"""
+SPAM_MODEL = SpamModel("test-model-1", 72.0)
 
-    def __init__(self, spam=None, nsfw=None, error=None):
-        self.spam = spam or SpamResult(False, 1, 1.0, 99.0, False)
+
+def spam_result(spam: float, category: str = "not_spam", harm: int = 0, version: str = SPAM_MODEL.version):
+    return SpamResult(spam, category, harm, 0.5, "english", version)
+
+
+class FakeArq:
+    """Returns preset results, or raises a preset error. models: the spam
+    models ARQ knows by version; the first is the current one."""
+
+    def __init__(self, spam=None, nsfw=None, error=None, models=(SPAM_MODEL,)):
+        self.spam = spam or spam_result(1.0)
         self.nsfw = nsfw or NsfwResult(99.0, 0.1, 0.1, 0.1, 0.1, False)
         self.error = error
+        self.models = {model.version: model for model in models}
+        self.current_model = models[0]
         self.nlp_calls = []
         self.nsfw_calls = []
+        self.model_calls = []
+
+    async def spam_model(self, seen_version=None):
+        self.model_calls.append(seen_version)
+        if self.error:
+            raise self.error
+        return self.models.get(seen_version, self.current_model)
 
     async def nlp(self, text):
         self.nlp_calls.append(text)

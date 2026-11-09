@@ -60,12 +60,12 @@ def benchmark_session():
 async def benchmark_pipeline(messages: int = 3000, chats: int = 100, users: int = 500):
     # Imported here: the session benchmark must not need a database
     from spr.app import SCAN_QUEUE_SIZE, SCAN_WORKERS
-    from spr.arq import SpamResult
     from spr.db import Database
     from spr.modules.watcher import check_message
     from spr.workqueue import WorkQueue
     from tests.fakes import (DATABASE_URL, FakeArq, FakeClient,
-                             FakeMessageEvent, make_user, setup_bot_username)
+                             FakeMessageEvent, make_user, setup_bot_username,
+                             spam_result)
 
     class SlowArq(FakeArq):
         async def nlp(self, text):
@@ -78,7 +78,7 @@ async def benchmark_pipeline(messages: int = 3000, chats: int = 100, users: int 
     chat_ids = [-1001000000000 - i for i in range(chats)]
 
     async def run(name: str, raid_share: float):
-        client = FakeClient(db=db, arq=SlowArq(spam=SpamResult(False, 1, 1.0, 99.0, False)))
+        client = FakeClient(db=db, arq=SlowArq(spam=spam_result(1.0)))
         for chat_id in chat_ids:
             client.participants[chat_id] = []
         pick = random.Random(1)

@@ -5,6 +5,9 @@
 2. Postgres (SPAM_DISK_CACHE_MB): short texts only, since those are the
    ones that keep coming back ("good morning everyone"). Survives
    restarts. Stores a hash of the text, never the text.
+
+Both layers are per ARQ model version: after ARQ is retrained, every text
+is scanned again by the new model.
 """
 import asyncio
 import hashlib
@@ -21,7 +24,7 @@ MEMORY_BYTES_PER_ENTRY = 330
 DISK_BYTES_PER_ROW = 190
 # Texts up to this many characters (after normalizing) go to Postgres
 DISK_CACHE_MAX_TEXT_LENGTH = 64
-# Results unused this long are deleted, in case ARQ's model changed
+# Results unused this long are deleted
 DISK_CACHE_MAX_AGE = timedelta(days=30)
 STATS_INTERVAL_SECONDS = 600
 PRUNE_EVERY_STATS_INTERVALS = 6  # every hour
@@ -59,14 +62,16 @@ class SpamResultCache:
     def disk_enabled(self) -> bool:
         return self._db is not None
 
-    async def get(self, text: str, scan):
-        """The spam result of text; scan() asks ARQ when no layer has it"""
+    async def get(self, text: str, scan, model_version: str):
+        """The spam result of text by ARQ's model_version; scan() asks ARQ
+        when no layer has it"""
         key = text_key(text)
+        memory_key = (model_version, key)
         if not self.disk_enabled or len(normalize(text)) > DISK_CACHE_MAX_TEXT_LENGTH:
-            return await self._memory.get(key, scan)
+            return await self._memory.get(memory_key, scan)
 
         async def from_disk_or_scan():
-            result = await self._db.get_spam_result(key)
+            result = await self._db.get_spam_result(key, model_version)
             if result is not None:
                 self.disk_hits += 1
                 return result
@@ -76,7 +81,7 @@ class SpamResultCache:
             return result
 
         # The memory layer runs one lookup per text at a time, disk included
-        return await self._memory.get(key, from_disk_or_scan)
+        return await self._memory.get(memory_key, from_disk_or_scan)
 
     def stats_line(self) -> str:
         """Hit rates since the last call"""

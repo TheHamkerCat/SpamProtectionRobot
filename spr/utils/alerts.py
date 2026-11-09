@@ -118,7 +118,17 @@ async def handle_nsfw(event, sender, result, alerts: bool = True):
         notify_chat(event, f"🚨 <b>NSFW ALERT</b> 🚔 Deleted a message from {sender_line}\n{scores}")
 
 
-async def handle_spam(event, sender, spam_probability: float, alerts: bool = True):
+HARM_LABELS = {0: "", 1: "promotion", 2: "scam"}
+
+
+def spam_label(result) -> str:
+    """"97 %", or "97 % · crypto_trading · scam" when ARQ knows more"""
+    parts = [f"{round(result.spam)} %", result.category, HARM_LABELS.get(result.harm, "")]
+    return " · ".join(part for part in parts if part)
+
+
+async def handle_spam(event, sender, result, alerts: bool = True):
+    """result: the spr.arq.SpamResult of the message"""
     client = event.client
     stats = await client.db.get_user_stats(event.sender_id)
     if not await delete_or_complain(event, sender, stats, "spam"):
@@ -131,7 +141,7 @@ async def handle_spam(event, sender, spam_probability: float, alerts: bool = Tru
     chat = await event.get_chat()
     url = chat_link(chat)
     log_report = Report(
-        f"<b>SPAM</b> in {mention(chat)} [<code>{event.chat_id}</code>] · {spam_probability} %\n"
+        f"<b>SPAM</b> in {mention(chat)} [<code>{event.chat_id}</code>] · {esc(spam_label(result))}\n"
         f"<b>User:</b> {sender_line}\n"
         f"{esc(content)}",
         buttons=lambda number, prefix: spam_vote_row(number, prefix, url),
@@ -143,7 +153,7 @@ async def handle_spam(event, sender, spam_probability: float, alerts: bool = Tru
         event.chat_id,
         Report(
             f"🚨 <b>SPAM ALERT</b> 🚔 Deleted a message from {sender_line}"
-            f" · spam probability {spam_probability} %",
+            f" · spam probability {round(result.spam)} %",
             refers_to=log_report,
         ),
     )

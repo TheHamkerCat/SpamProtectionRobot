@@ -91,16 +91,17 @@ class IgnoredMedia(Base):
 class CachedSpamResult(Base):
     """ARQ spam results of short texts, so common messages ("good morning
     everyone") are scanned once. Only a hash of the text is stored, never
-    the text itself."""
+    the text itself. A result from another ARQ model version counts as missing."""
 
     __tablename__ = "spam_results"
 
     text_hash: Mapped[bytes] = mapped_column(LargeBinary(16), primary_key=True)
-    is_spam: Mapped[bool] = mapped_column(Boolean)
-    spam_probability: Mapped[float] = mapped_column(Double)
+    model_version: Mapped[str] = mapped_column(Text)
     spam: Mapped[float] = mapped_column(Double)
-    ham: Mapped[float] = mapped_column(Double)
-    profanity: Mapped[bool] = mapped_column(Boolean)
+    category: Mapped[str] = mapped_column(Text)
+    harm: Mapped[int] = mapped_column(SmallInteger)
+    abusive: Mapped[float] = mapped_column(Double)
+    language: Mapped[str] = mapped_column(Text)
     # Updated at most once a day; the oldest rows are deleted first
     last_used_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, server_default=text("now()"), index=True

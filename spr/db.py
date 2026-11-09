@@ -307,35 +307,40 @@ class Database:
 
     # Spam results of short texts (see spr/scan_cache.py)
 
-    async def get_spam_result(self, text_hash: bytes) -> Optional[SpamResult]:
+    async def get_spam_result(self, text_hash: bytes, model_version: str) -> Optional[SpamResult]:
+        """The cached result, None if missing or from another model version"""
         async with self._sessions.begin() as session:
             row = await session.get(CachedSpamResult, text_hash)
-            if row is None:
+            if row is None or row.model_version != model_version:
                 return None
             if row.last_used_at < utc_now() - SPAM_RESULT_TOUCH_INTERVAL:
                 row.last_used_at = utc_now()
             return SpamResult(
-                is_spam=row.is_spam,
-                spam_probability=row.spam_probability,
                 spam=row.spam,
-                ham=row.ham,
-                profanity=row.profanity,
+                category=row.category,
+                harm=row.harm,
+                abusive=row.abusive,
+                language=row.language,
+                model_version=row.model_version,
             )
 
     async def store_spam_result(self, text_hash: bytes, result: SpamResult):
-        # Another worker may store the same text at the same moment
+        """Insert, or replace a result of another model version. Another worker
+        may store the same text at the same moment: ON CONFLICT, no error."""
+        values = {
+            "model_version": result.model_version,
+            "spam": result.spam,
+            "category": result.category,
+            "harm": result.harm,
+            "abusive": result.abusive,
+            "language": result.language,
+            "last_used_at": utc_now(),
+        }
         async with self._sessions.begin() as session:
             await session.execute(
                 pg_insert(CachedSpamResult)
-                .values(
-                    text_hash=text_hash,
-                    is_spam=result.is_spam,
-                    spam_probability=result.spam_probability,
-                    spam=result.spam,
-                    ham=result.ham,
-                    profanity=result.profanity,
-                )
-                .on_conflict_do_nothing()
+                .values(text_hash=text_hash, **values)
+                .on_conflict_do_update(index_elements=[CachedSpamResult.text_hash], set_=values)
             )
 
     async def prune_spam_results(self, max_rows: int, max_age: timedelta) -> int:

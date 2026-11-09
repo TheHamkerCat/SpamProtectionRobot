@@ -6,6 +6,7 @@ from spr.core import ikb
 from spr.core.commands import command
 from spr.core.entities import PRIVATE_CHAT_LINK, chat_link, get_username, mention
 from spr.core.formatting import esc
+from spr.core.text import plain_letters
 from tests.fakes import BOT_USERNAME, make_channel, make_user, setup_bot_username
 
 
@@ -73,3 +74,13 @@ class HtmlTest(unittest.TestCase):
     def test_chat_link(self):
         self.assertEqual(chat_link(make_channel(-1007, username="grp")), "https://t.me/grp")
         self.assertEqual(chat_link(make_channel(-1008)), PRIVATE_CHAT_LINK)
+
+
+class PlainLettersTest(unittest.TestCase):
+    def test_look_alike_letters(self):
+        self.assertEqual(plain_letters("𝙁𝙧𝙚𝙚 𝙘𝙧𝙮𝙥𝙩𝙤"), "Free crypto")
+        self.assertEqual(plain_letters("ｔ．ｍｅ/ｊｏｉｎ"), "t.me/join")
+
+    def test_other_scripts_stay_the_same(self):
+        for text in ("नमस्ते दोस्तों", "Привет всем", "你好", "hello 👋"):
+            self.assertEqual(plain_letters(text), text)

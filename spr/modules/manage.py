@@ -6,6 +6,8 @@ from telethon.errors import RPCError
 
 from spr.arq import ArqError
 from spr.core.commands import command, get_args
+from spr.core.formatting import esc
+from spr.core.text import plain_letters
 from spr.utils.media import download_for_scan, get_media
 
 __MODULE__ = "Manage"
@@ -42,7 +44,7 @@ FEATURES = {
         "Alerts are on. When I delete spam or NSFW media or ban a spammer, "
         "I post a short message about it here.",
         "Alerts are off. I still delete spam and NSFW media and ban spammers, "
-        "but without posting about it here. If I lack admin rights, I still say so.",
+        "but without posting about it here.",
     ),
 }
 
@@ -124,10 +126,7 @@ async def settings_command(event):
         f"{details.label}: <b>{on_off(values[feature])}</b> (/{details.command})"
         for feature, details in FEATURES.items()
     ]
-    await event.reply(
-        "<b>Settings of this chat</b>\n" + "\n".join(lines)
-        + "\n\nAdmins can change them with the commands in brackets."
-    )
+    await event.reply("<b>Settings of this chat</b>\n" + "\n".join(lines))
 
 
 @events.register(events.NewMessage(pattern=command("nsfw_scan")))
@@ -162,13 +161,16 @@ async def spam_scan_command(event):
     if not reply.raw_text:
         return await event.reply("Can't scan that")
     try:
-        result = await event.client.arq.nlp(reply.raw_text)
+        result = await event.client.arq.nlp(plain_letters(reply.raw_text))
+        model = await event.client.arq.spam_model(result.model_version)
     except ArqError as error:
         return await event.reply(str(error))
+    deleted = "yes" if result.spam > model.spam_above else "no"
     await event.reply(
-        f"<b>Is Spam:</b> {result.is_spam}\n"
-        f"<b>Spam Probability:</b> {result.spam_probability} %\n"
-        f"<b>Spam:</b> {result.spam}\n"
-        f"<b>Ham:</b> {result.ham}\n"
-        f"<b>Profanity:</b> {result.profanity}"
+        f"<b>Spam:</b> <code>{result.spam} %</code> (deleted above {model.spam_above} %: {deleted})\n"
+        f"<b>Category:</b> <code>{esc(result.category)}</code>\n"
+        f"<b>Harm:</b> <code>{result.harm}</code> (0 none, 1 promotion, 2 scam)\n"
+        f"<b>Abusive:</b> <code>{result.abusive} %</code>\n"
+        f"<b>Language:</b> <code>{esc(result.language)}</code>\n"
+        f"<b>Model:</b> <code>{esc(result.model_version)}</code>"
     )

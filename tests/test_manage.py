@@ -9,7 +9,7 @@ from spr.modules.manage import (alerts_toggle_func, nsfw_scan_command,
                                 spam_toggle_func)
 from tests.fakes import (ADMIN_ID, SUDO_ID, SUPERGROUP_ID, DatabaseTestCase,
                          FakeArq, FakeClient, FakeMessageEvent, make_channel,
-                         make_message, make_user)
+                         make_message, make_user, spam_result)
 
 NOW = datetime(2026, 1, 1)
 
@@ -96,8 +96,7 @@ class AlertsSettingTest(DatabaseTestCase):
             "<b>Settings of this chat</b>\n"
             "Spam detection: <b>on</b> (/anti_spam)\n"
             "NSFW detection: <b>on</b> (/anti_nsfw)\n"
-            "Alerts: <b>off</b> (/alerts)\n\n"
-            "Admins can change them with the commands in brackets.",
+            "Alerts: <b>off</b> (/alerts)",
         )
 
 
@@ -107,6 +106,20 @@ class ScanCommandTest(DatabaseTestCase):
         event = FakeMessageEvent(client, make_user(), "/spam_scan", reply_message=make_message("buy"))
         await spam_scan_command(event)
         self.assertEqual(event.reply_texts(), ["ARQ is down"])
+
+    async def test_spam_scan_sends_plain_letters(self):
+        client = FakeClient(db=self.db, arq=FakeArq())
+        event = FakeMessageEvent(client, make_user(), "/spam_scan", reply_message=make_message("𝙛𝙧𝙚𝙚 𝙘𝙧𝙮𝙥𝙩𝙤"))
+        await spam_scan_command(event)
+        self.assertEqual(client.arq.nlp_calls, ["free crypto"])
+
+    async def test_spam_scan_shows_the_answer(self):
+        client = FakeClient(db=self.db, arq=FakeArq(spam=spam_result(97.25, "crypto_trading", 2)))
+        event = FakeMessageEvent(client, make_user(), "/spam_scan", reply_message=make_message("buy signals"))
+        await spam_scan_command(event)
+        reply = event.reply_texts()[0]
+        for part in ("97.25 %", "deleted above 72.0 %: yes", "crypto_trading", "<code>2</code>", "english", "test-model-1"):
+            self.assertIn(part, reply)
 
     async def test_spam_scan_without_reply(self):
         event = FakeMessageEvent(FakeClient(db=self.db), make_user(), "/spam_scan")

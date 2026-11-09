@@ -5,7 +5,7 @@ from unittest import mock
 from telethon.errors import ChatAdminRequiredError, MessageDeleteForbiddenError
 from telethon.tl import types
 
-from spr.arq import ArqError, NsfwResult, SpamResult
+from spr.arq import ArqError, NsfwResult, SpamModel
 from spr.db import SPAM_HISTORY_SIZE
 from spr.modules import watcher
 from spr.modules.watcher import (check_message, is_watched_message,
@@ -15,12 +15,12 @@ from spr.db import UserStats
 from spr.utils.media import get_media_id
 from spr.workqueue import WorkQueue
 from tests.fakes import (ADMIN_ID, BASIC_GROUP_ID, NSFW_LOG, SPAM_LOG,
-                         SUDO_ID, SUPERGROUP_ID, USER_ID, DatabaseTestCase,
+                         SPAM_MODEL, SUDO_ID, SUPERGROUP_ID, USER_ID, DatabaseTestCase,
                          FakeArq, FakeClient, FakeMessageEvent, make_channel,
-                         make_photo, make_user)
+                         make_photo, make_user, spam_result)
 
 NOW = datetime(2026, 1, 1)
-SPAM = SpamResult(True, 97, 97.0, 3.0, False)
+SPAM = spam_result(97.0, "crypto_trading", 2)
 NSFW = NsfwResult(1.0, 95.0, 1.0, 2.0, 1.0, True)
 PHOTO = types.MessageMediaPhoto(photo=make_photo(4242))
 SPAM_TEXT = "Earn 5000 daily, DM me for crypto signals"
@@ -62,6 +62,23 @@ class WatcherTest(DatabaseTestCase):
         # The group alert links to the log report, sent first in the same flush
         self.assertEqual(alert.kwargs["buttons"][0][0].text, "View in spam log")
         self.assertEqual((await self.db.get_user_stats(USER_ID)).spam_data, (97.0,))
+        # The log says what kind of spam it was
+        self.assertIn("97 % · crypto_trading · scam", log.text)
+
+    async def test_below_threshold_is_scored_not_deleted(self):
+        self.client.arq = FakeArq(spam=spam_result(SPAM_MODEL.spam_above - 0.5, "promotion", 1))
+        await self.check(self.event(make_user(), SPAM_TEXT))
+        self.assertEqual(self.client.deleted, [])
+        self.assertEqual((await self.db.get_user_stats(USER_ID)).spam_data, (SPAM_MODEL.spam_above - 0.5,))
+
+    async def test_retrained_model_uses_its_own_threshold(self):
+        # ARQ answers with model 2 while the bot still knows model 1;
+        # model 2's threshold (99 %) keeps a 97 % message
+        retrained = SpamModel("test-model-2", 99.0)
+        self.client.arq = FakeArq(spam=spam_result(97.0, version=retrained.version), models=(SPAM_MODEL, retrained))
+        await self.check(self.event(make_user(), SPAM_TEXT))
+        self.assertEqual(self.client.arq.model_calls, [None, "test-model-2"])
+        self.assertEqual(self.client.deleted, [])
 
     async def test_admin_spam_is_scored_but_not_deleted(self):
         await self.check(self.event(make_user(ADMIN_ID), SPAM_TEXT))
@@ -198,12 +215,28 @@ class WatcherTest(DatabaseTestCase):
     async def test_trusted_senders_are_sampled(self):
         for _ in range(SPAM_HISTORY_SIZE):
             await self.db.add_spam_prediction(USER_ID, 1)
-        self.client.arq = FakeArq(spam=SpamResult(False, 1, 1.0, 99.0, False))
+        self.client.arq = FakeArq(spam=spam_result(1.0))
         with mock.patch.object(watcher._random, "random", return_value=0.5):
             await self.check(self.event(make_user(), "see you at the meeting tomorrow"))
             # Texts with links are always scanned
             await self.check(self.event(make_user(), "look at https://example.com now"))
         self.assertEqual(self.client.arq.nlp_calls, ["look at https://example.com now"])
+
+    async def test_look_alike_letters_are_scanned_as_plain_text(self):
+        fancy = "𝙀𝙖𝙧𝙣 5000 𝙙𝙖𝙞𝙡𝙮, DM me for crypto signals"
+        await self.check(self.event(make_user(), fancy, message_id=1))
+        await self.check(self.event(make_user(USER_ID + 1), SPAM_TEXT, message_id=2))
+        # One scan for both: the plain text is the same
+        self.assertEqual(self.client.arq.nlp_calls, [SPAM_TEXT])
+        self.assertEqual(len(self.client.deleted), 2)
+
+    async def test_link_in_look_alike_letters_is_a_link(self):
+        for _ in range(SPAM_HISTORY_SIZE):
+            await self.db.add_spam_prediction(USER_ID, 1)
+        self.client.arq = FakeArq(spam=spam_result(1.0))
+        with mock.patch.object(watcher._random, "random", return_value=0.5):
+            await self.check(self.event(make_user(), "𝗷𝗼𝗶𝗻 𝘁.𝗺𝗲/𝗳𝗿𝗲𝗲𝗰𝗼𝗶𝗻𝘀"))
+        self.assertEqual(self.client.arq.nlp_calls, ["join t.me/freecoins"])
 
     async def test_handler_only_queues(self):
         handled = []

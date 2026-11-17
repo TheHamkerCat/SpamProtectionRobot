@@ -14,6 +14,8 @@ from telethon import functions, utils
 from telethon.tl import types
 from telethon.tl.patched import Message
 
+from pyfederation.records import EntityQueryResult, ScannedContent
+
 from spr.admins import AdminCache
 from spr.arq import NsfwResult, SpamModel, SpamResult
 from spr.cache import AsyncLruCache
@@ -140,6 +142,100 @@ class FakeArq:
         return self.nsfw
 
 
+FEDERATION_TIMESTAMP = 1_700_000_000
+
+
+def federation_query(action=None, lift=None, incidents=("SPAM",)) -> EntityQueryResult:
+    """A Federation assessment of a sender"""
+    return EntityQueryResult.model_validate(
+        {
+            "entity_record": {
+                "uuid": "e" * 32,
+                "hash": "b" * 64,
+                "host": "telegram.org",
+                "id": str(USER_ID),
+                "whitelisted": False,
+                "reputation": 0,
+                "created": FEDERATION_TIMESTAMP,
+                "updated": FEDERATION_TIMESTAMP,
+            },
+            "related_entities": [],
+            "active_blacklists": [
+                {
+                    "uuid": f"{index}" * 32,
+                    "operator": "o" * 32,
+                    "entity": "e" * 32,
+                    "type": incident,
+                    "lifted": False,
+                    "created": FEDERATION_TIMESTAMP,
+                }
+                for index, incident in enumerate(incidents)
+            ],
+            "suggested_action": action,
+            "suggested_lift_timestamp": lift,
+        }
+    )
+
+
+def federation_scan(action=None, flag="MALICIOUS", concerns=("SPAM",)) -> ScannedContent:
+    """A Federation content scan result"""
+    return ScannedContent.model_validate(
+        {
+            "resolved_entities": [],
+            "classification": {"classification_flag": flag, "confidence": 0.9},
+            "suggested_action": action,
+            "scan_results": {},
+            "risk_score": 90.0,
+            "detections": [
+                {"concern": concern, "content_index": 0, "source": "test", "verified": True}
+                for concern in concerns
+            ],
+        }
+    )
+
+
+class FakeOfd:
+    """Stands in for spr.ofd.OfdClient: preset results, recorded calls"""
+
+    def __init__(
+        self,
+        query=None,
+        scan=None,
+        error=None,
+        can_contribute=False,
+        can_scan=True,
+        can_query=True,
+        collects_public_scan_content=False,
+    ):
+        self.query = query
+        self.scan_result = scan or federation_scan(None, flag="NORMAL", concerns=())
+        self.error = error
+        self.can_contribute = can_contribute
+        self.can_scan = can_scan
+        self.can_query = can_query
+        self.collects_public_scan_content = collects_public_scan_content
+        self.queries = []  # peer IDs
+        self.scans = []  # (ContentInput, author)
+        self.published = []  # peer IDs
+
+    async def query_sender(self, peer_id):
+        self.queries.append(peer_id)
+        if self.error:
+            raise self.error
+        return self.query
+
+    async def scan(self, content, author=None):
+        self.scans.append((content, author))
+        if self.error:
+            raise self.error
+        return self.scan_result
+
+    async def publish_sender(self, sender):
+        # The real one only publishes with a token that may contribute
+        if self.can_contribute:
+            self.published.append(utils.get_peer_id(sender))
+
+
 class SentMessage:
     _next_id = 5000
 
@@ -176,10 +272,12 @@ class FakeClient:
     """Stands in for SprClient. Without a database, admin lists are kept
     in a FakeAdminStore."""
 
-    def __init__(self, db=None, settings=None, arq=None):
+    def __init__(self, db=None, settings=None, arq=None, ofd=None):
         self.settings = settings or make_settings()
         self.db = db if db is not None else FakeAdminStore()
         self.arq = arq or FakeArq()
+        # FakeOfd, None like a bot without OFD_HOST
+        self.ofd = ofd
         self.admins = AdminCache(self, fetches_per_second=10_000)
         self.reports = ReportQueue(self, priority_chats=(SPAM_LOG, NSFW_LOG), sends_per_second=10_000)
         # The disk layer needs the real database

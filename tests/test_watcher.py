@@ -8,6 +8,7 @@ from telethon.tl import types
 from spr.arq import ArqError, NsfwResult, SpamModel
 from spr.db import SPAM_HISTORY_SIZE
 from spr.modules import watcher
+from spr.ofd import OfdError
 from spr.modules.watcher import (check_message, is_watched_message,
                                  message_watcher, should_scan_text)
 from spr.scan_cache import text_key
@@ -16,7 +17,8 @@ from spr.utils.media import get_media_id
 from spr.workqueue import WorkQueue
 from tests.fakes import (ADMIN_ID, BASIC_GROUP_ID, NSFW_LOG, SPAM_LOG,
                          SPAM_MODEL, SUDO_ID, SUPERGROUP_ID, USER_ID, DatabaseTestCase,
-                         FakeArq, FakeClient, FakeMessageEvent, make_channel,
+                         FakeArq, FakeClient, FakeMessageEvent, FakeOfd,
+                         federation_query, federation_scan, make_channel,
                          make_photo, make_user, spam_result)
 
 NOW = datetime(2026, 1, 1)
@@ -295,3 +297,155 @@ class ShouldScanTextTest(DatabaseTestCase):
     def test_text_key_ignores_case_and_spacing(self):
         self.assertEqual(text_key("Hello   World"), text_key(" hello world "))
         self.assertNotEqual(text_key("hello world"), text_key("hello world!"))
+
+
+CLEAN = spam_result(1.0)
+PERMANENT_BLOCK = federation_query("PERMANENTLY_BLOCK_ENTITY", incidents=("SPAM", "SCAM"))
+LIFT_AT = 1_900_000_000
+
+
+class FederationWatcherTest(DatabaseTestCase):
+    """With OFD_HOST: sender lookups, scans and publishing (spr/ofd.py)"""
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        self.client = FakeClient(db=self.db, arq=FakeArq(spam=CLEAN), ofd=FakeOfd())
+        self.client.participants[SUPERGROUP_ID] = [
+            (ADMIN_ID, types.ChannelParticipantAdmin(ADMIN_ID, 1, NOW, types.ChatAdminRights()))
+        ]
+
+    def event(self, sender, text="", **kwargs):
+        return FakeMessageEvent(self.client, sender, text, **kwargs)
+
+    async def check(self, event):
+        await check_message(event)
+        await self.client.flush_reports()
+
+    async def test_blocked_sender_is_banned_and_logged(self):
+        self.client.ofd.query = PERMANENT_BLOCK
+        await self.check(self.event(make_user(), "hello there everyone"))
+        self.assertEqual(len(self.client.restricted), 1)
+        self.assertNotIn("until_date", self.client.restricted[0][2])
+        log = self.client.texts_to(SPAM_LOG)[0]
+        self.assertIn("FEDERATION BAN", log)
+        self.assertIn("SCAM, SPAM · permanently", log)
+        self.assertIn("blacklisted on Federation (SCAM, SPAM)", self.client.texts_to(SUPERGROUP_ID)[0])
+        # Banned before anything else is checked
+        self.assertEqual(self.client.arq.nlp_calls, [])
+
+    async def test_temporary_block_bans_until_the_lift_time(self):
+        self.client.ofd.query = federation_query("TEMPORARILY_BLOCK_ENTITY", lift=LIFT_AT)
+        await self.check(self.event(make_user(), "hello there everyone"))
+        until = self.client.restricted[0][2]["until_date"]
+        self.assertEqual(int(until.timestamp()), LIFT_AT)
+
+    async def test_temporary_block_without_lift_time_is_not_acted_on(self):
+        self.client.ofd.query = federation_query("TEMPORARILY_BLOCK_ENTITY")
+        await self.check(self.event(make_user(), "hello there everyone"))
+        self.assertEqual(self.client.restricted, [])
+        self.assertEqual(self.client.kicked, [])
+
+    async def test_caution_is_ignored(self):
+        self.client.ofd.query = federation_query("CAUTION")
+        self.client.ofd.scan_result = federation_scan("CAUTION", flag="SUSPICIOUS")
+        await self.check(self.event(make_user(), SPAM_TEXT))
+        self.assertEqual(self.client.restricted, [])
+        self.assertEqual(self.client.deleted, [])
+
+    async def test_admins_are_never_looked_up_scanned_or_banned(self):
+        self.client.ofd.query = PERMANENT_BLOCK
+        self.client.ofd.scan_result = federation_scan("BLOCK_CONTENT")
+        await self.check(self.event(make_user(ADMIN_ID), SPAM_TEXT))
+        self.assertEqual(self.client.ofd.queries, [])
+        self.assertEqual(self.client.ofd.scans, [])
+        self.assertEqual(self.client.restricted, [])
+        self.assertEqual(self.client.deleted, [])
+
+    async def test_block_content_deletes_and_reports(self):
+        self.client.ofd.scan_result = federation_scan("BLOCK_CONTENT", concerns=("PHISHING",))
+        event = self.event(make_user(), SPAM_TEXT)
+        await self.check(event)
+        self.assertEqual(self.client.deleted, [(SUPERGROUP_ID, [event.id])])
+        log = [m for m in self.client.sent if m.chat_id == SPAM_LOG][0]
+        self.assertIn("Federation · malicious · phishing", log.text)
+        self.assertEqual(
+            [b.type.data for b in log.kwargs["buttons"][0][:2]], [b"upvote_spam_1", b"downvote_spam_1"]
+        )
+        self.assertIn("flagged by Federation", self.client.texts_to(SUPERGROUP_ID)[0])
+        # ARQ still scores the sender as before
+        self.assertEqual((await self.db.get_user_stats(USER_ID)).spam_data, (1.0,))
+
+    async def test_arq_spam_is_handled_by_arq_once(self):
+        self.client.arq = FakeArq(spam=SPAM)
+        self.client.ofd.scan_result = federation_scan("BLOCK_CONTENT")
+        await self.check(self.event(make_user(), SPAM_TEXT))
+        self.assertEqual(len(self.client.deleted), 1)
+        self.assertIn("crypto_trading", self.client.texts_to(SPAM_LOG)[0])
+
+    async def test_scan_carries_author_and_details(self):
+        await self.check(self.event(make_user(username="alice"), SPAM_TEXT))
+        content, author = self.client.ofd.scans[0]
+        self.assertEqual(author, f"{USER_ID}@telegram.org")
+        self.assertEqual(content.text_content, SPAM_TEXT)
+        self.assertEqual(content.tag, "telegram_message")
+        self.assertEqual(content.metadata["author_username"], "alice")
+        self.assertEqual(content.metadata["chat_id"], SUPERGROUP_ID)
+
+    async def test_privacy_mode_sends_text_only_but_still_looks_up(self):
+        await self.db.set_chat_feature(SUPERGROUP_ID, "ofd_privacy", True)
+        self.client.ofd.can_contribute = True
+        await self.check(self.event(make_user(username="alice"), SPAM_TEXT))
+        content, author = self.client.ofd.scans[0]
+        self.assertIsNone(author)
+        self.assertIsNone(content.metadata)
+        self.assertIsNone(content.note)
+        self.assertEqual(self.client.ofd.published, [])
+        self.assertEqual(self.client.ofd.queries, [USER_ID])
+
+    async def test_privacy_mode_still_bans_blocked_senders(self):
+        await self.db.set_chat_feature(SUPERGROUP_ID, "ofd_privacy", True)
+        self.client.ofd.query = PERMANENT_BLOCK
+        await self.check(self.event(make_user(), "hello there everyone"))
+        self.assertEqual(len(self.client.restricted), 1)
+
+    async def test_senders_are_published_only_with_a_contributing_token(self):
+        await self.check(self.event(make_user(), SPAM_TEXT))
+        self.assertEqual(self.client.ofd.published, [])
+        self.client.ofd.can_contribute = True
+        await self.check(self.event(make_user(), SPAM_TEXT))
+        self.assertEqual(self.client.ofd.published, [USER_ID])
+
+    async def test_ofd_disabled_sends_nothing(self):
+        await self.db.set_chat_feature(SUPERGROUP_ID, "ofd", False)
+        self.client.ofd.can_contribute = True
+        self.client.ofd.query = PERMANENT_BLOCK
+        await self.check(self.event(make_user(), SPAM_TEXT))
+        self.assertEqual(self.client.ofd.queries, [])
+        self.assertEqual(self.client.ofd.scans, [])
+        self.assertEqual(self.client.ofd.published, [])
+        self.assertEqual(self.client.restricted, [])
+
+    async def test_spam_detection_disabled_sends_no_scan(self):
+        await self.db.set_chat_feature(SUPERGROUP_ID, "spam", False)
+        await self.check(self.event(make_user(), SPAM_TEXT))
+        self.assertEqual(self.client.ofd.scans, [])
+
+    async def test_server_without_anonymous_scans(self):
+        self.client.ofd.can_scan = False
+        self.client.ofd.can_query = False
+        await self.check(self.event(make_user(), SPAM_TEXT))
+        self.assertEqual(self.client.ofd.scans, [])
+        self.assertEqual(self.client.ofd.queries, [])
+        self.assertEqual(len(self.client.arq.nlp_calls), 1)
+
+    async def test_federation_failure_leaves_arq_working(self):
+        self.client.ofd.error = OfdError("down")
+        self.client.arq = FakeArq(spam=SPAM)
+        await self.check(self.event(make_user(), SPAM_TEXT))
+        self.assertEqual(len(self.client.deleted), 1)
+
+    async def test_arq_failure_leaves_federation_working(self):
+        self.client.arq = FakeArq(error=ArqError("down"))
+        self.client.ofd.scan_result = federation_scan("BLOCK_CONTENT")
+        await self.check(self.event(make_user(), SPAM_TEXT))
+        self.assertEqual(len(self.client.deleted), 1)

@@ -12,6 +12,7 @@ from spr.core.commands import set_bot_username
 from spr.db import Database
 from spr.modules import discover_modules
 from spr.modules.watcher import check_message
+from spr.ofd import OfdClient
 from spr.scan_cache import cache_maintenance_loop
 from spr.workqueue import WorkQueue
 
@@ -94,7 +95,13 @@ async def run(settings):
     db = await Database.connect(settings.database_url)
     await db.migrate()
     arq = ArqClient(settings.arq_api_url, settings.arq_api_key)
-    client = SprClient(str(session_path(settings.bot_token)), settings, db, arq)
+    ofd = None
+    if settings.ofd_host:
+        ofd = OfdClient(settings.ofd_host, settings.ofd_token)
+        await ofd.start()
+        mode = "contributing" if ofd.can_contribute else "anonymous"
+        logger.info("Federation: %s (%s)", settings.ofd_host, mode)
+    client = SprClient(str(session_path(settings.bot_token)), settings, db, arq, ofd)
     client.message_queue = WorkQueue(
         check_message, workers=SCAN_WORKERS, max_size=SCAN_QUEUE_SIZE, name="message"
     )
@@ -119,5 +126,7 @@ async def run(settings):
         await client.message_queue.stop()
         await client.disconnect()
         await arq.close()
+        if ofd is not None:
+            await ofd.close()
         await db.close()
         logger.info("Stopped")

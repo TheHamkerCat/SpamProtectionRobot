@@ -53,6 +53,14 @@ class Chat(Base):
     alerts_enabled: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=text("true")
     )
+    # Federation (OFD) checks, when the host set OFD_HOST (/ofd)
+    ofd_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true")
+    )
+    # On: Federation gets only message text, nothing is published (/ofd_privacy)
+    ofd_privacy: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
     blacklist_reason: Mapped[Optional[str]] = mapped_column(Text)
     blacklisted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     # Sender IDs never punished here (admins, the chat itself for anonymous

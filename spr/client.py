@@ -19,13 +19,14 @@ class SprClient(TelegramClient):
     """Telegram client that also carries the bot's services.
     Handlers reach them through event.client, e.g. event.client.db"""
 
-    def __init__(self, session: str, settings, db, arq):
+    def __init__(self, session: str, settings, db, arq, ofd=None):
         super().__init__(
             session, settings.api_id, settings.api_hash, entity_cache_limit=ENTITY_CACHE_LIMIT
         )
         self.settings = settings
         self.db = db
         self.arq = arq
+        self.ofd = ofd
         self.admins = AdminCache(self)
         self.reports = ReportQueue(
             self, priority_chats=(settings.spam_log_channel, settings.nsfw_log_channel)

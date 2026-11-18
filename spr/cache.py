@@ -1,6 +1,7 @@
 import asyncio
+import time
 from collections import OrderedDict
-from typing import Awaitable, Callable, Hashable
+from typing import Awaitable, Callable, Hashable, Optional
 
 
 class AsyncLruCache:
@@ -8,10 +9,13 @@ class AsyncLruCache:
 
     Callers asking for a key that is being computed wait for that one
     computation, so a spam raid of 100 identical messages costs one lookup.
-    Failed lookups are not cached."""
+    Failed lookups are not cached. With max_age (seconds), older results
+    count as missing and are looked up again."""
 
-    def __init__(self, max_size: int):
+    def __init__(self, max_size: int, max_age: Optional[float] = None):
         self._max_size = max_size
+        self._max_age = max_age
+        self._stored_at = {}
         self._results = OrderedDict()
         self._running = {}
         self.hits = 0
@@ -21,6 +25,9 @@ class AsyncLruCache:
         return len(self._results)
 
     async def get(self, key: Hashable, compute: Callable[[], Awaitable]):
+        if key in self._results and self._is_stale(key):
+            del self._results[key]
+            self._stored_at.pop(key, None)
         if key in self._results:
             self._results.move_to_end(key)
             self.hits += 1
@@ -40,8 +47,16 @@ class AsyncLruCache:
         self._store(key, result)
         return result
 
+    def _is_stale(self, key) -> bool:
+        if self._max_age is None:
+            return False
+        return time.monotonic() - self._stored_at[key] >= self._max_age
+
     def _store(self, key, result):
         self._results[key] = result
         self._results.move_to_end(key)
+        if self._max_age is not None:
+            self._stored_at[key] = time.monotonic()
         while len(self._results) > self._max_size:
-            self._results.popitem(last=False)
+            old_key, _ = self._results.popitem(last=False)
+            self._stored_at.pop(old_key, None)

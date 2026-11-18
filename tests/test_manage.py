@@ -4,12 +4,13 @@ from telethon.errors import ChatAdminRequiredError
 from telethon.tl import types
 
 from spr.arq import ArqError
-from spr.modules.manage import (alerts_toggle_func, nsfw_scan_command,
-                                settings_command, spam_scan_command,
-                                spam_toggle_func)
+from spr.modules.manage import (OFD_NOT_SET_UP, alerts_toggle_func,
+                                nsfw_scan_command, ofd_privacy_toggle_func,
+                                ofd_toggle_func, settings_command,
+                                spam_scan_command, spam_toggle_func)
 from tests.fakes import (ADMIN_ID, SUDO_ID, SUPERGROUP_ID, DatabaseTestCase,
-                         FakeArq, FakeClient, FakeMessageEvent, make_channel,
-                         make_message, make_user, spam_result)
+                         FakeArq, FakeClient, FakeMessageEvent, FakeOfd,
+                         make_channel, make_message, make_user, spam_result)
 
 NOW = datetime(2026, 1, 1)
 
@@ -98,6 +99,83 @@ class AlertsSettingTest(DatabaseTestCase):
             "NSFW detection: <b>on</b> (/anti_nsfw)\n"
             "Alerts: <b>off</b> (/alerts)",
         )
+
+
+class FederationSettingsTest(DatabaseTestCase):
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        self.client = FakeClient(db=self.db, ofd=FakeOfd())
+        self.client.participants[SUPERGROUP_ID] = [
+            (ADMIN_ID, types.ChannelParticipantAdmin(ADMIN_ID, 1, NOW, types.ChatAdminRights()))
+        ]
+
+    async def run_command(self, handler, sender, text):
+        event = FakeMessageEvent(self.client, sender, text)
+        await handler(event)
+        return event.reply_texts()
+
+    async def settings(self):
+        return await self.db.get_chat_settings(SUPERGROUP_ID)
+
+    async def test_defaults(self):
+        settings = await self.settings()
+        self.assertTrue(settings.ofd_enabled)
+        self.assertFalse(settings.ofd_privacy)
+
+    async def test_admin_turns_federation_off_and_on(self):
+        admin = make_user(ADMIN_ID)
+        replies = await self.run_command(ofd_toggle_func, admin, "/ofd disable")
+        self.assertIn("I don't send anything", replies[0])
+        self.assertFalse((await self.settings()).ofd_enabled)
+        replies = await self.run_command(ofd_toggle_func, admin, "/ofd DISABLE")
+        self.assertEqual(replies, ["Already disabled."])
+        replies = await self.run_command(ofd_toggle_func, admin, "/ofd enable")
+        self.assertTrue(replies[0].startswith("Enabled Federation (OFD) checks."))
+        self.assertIn("/ofd_privacy ENABLE", replies[0])
+        self.assertTrue((await self.settings()).ofd_enabled)
+
+    async def test_enable_reply_tells_what_is_shared(self):
+        admin = make_user(ADMIN_ID)
+        await self.db.set_chat_feature(SUPERGROUP_ID, "ofd", False)
+        self.client.ofd.can_contribute = True
+        replies = await self.run_command(ofd_toggle_func, admin, "/ofd enable")
+        self.assertIn("publish the senders' public profiles", replies[0])
+
+        await self.db.set_chat_feature(SUPERGROUP_ID, "ofd", False)
+        self.client.ofd = FakeOfd(collects_public_scan_content=True)
+        replies = await self.run_command(ofd_toggle_func, admin, "/ofd enable")
+        self.assertIn("The server may keep what I send.", replies[0])
+
+    async def test_privacy_mode(self):
+        admin = make_user(ADMIN_ID)
+        replies = await self.run_command(ofd_privacy_toggle_func, admin, "/ofd_privacy enable")
+        self.assertTrue(replies[0].startswith("Enabled Federation privacy mode."))
+        self.assertIn("Only the text of messages", replies[0])
+        self.assertTrue((await self.settings()).ofd_privacy)
+        replies = await self.run_command(ofd_privacy_toggle_func, admin, "/ofd_privacy disable")
+        self.assertTrue(replies[0].startswith("Disabled Federation privacy mode."))
+        self.assertFalse((await self.settings()).ofd_privacy)
+
+    async def test_regular_user_can_not_change_federation(self):
+        replies = await self.run_command(ofd_toggle_func, make_user(), "/ofd disable")
+        self.assertEqual(replies, ["You don't have enough permissions"])
+        replies = await self.run_command(ofd_privacy_toggle_func, make_user(), "/ofd_privacy enable")
+        self.assertEqual(replies, ["You don't have enough permissions"])
+        settings = await self.settings()
+        self.assertTrue(settings.ofd_enabled)
+        self.assertFalse(settings.ofd_privacy)
+
+    async def test_bot_without_federation(self):
+        self.client.ofd = None
+        for handler, text in ((ofd_toggle_func, "/ofd disable"), (ofd_privacy_toggle_func, "/ofd_privacy enable")):
+            self.assertEqual(await self.run_command(handler, make_user(ADMIN_ID), text), [OFD_NOT_SET_UP])
+        self.assertEqual(await self.count("chats"), 0)
+
+    async def test_settings_show_federation(self):
+        await self.db.set_chat_feature(SUPERGROUP_ID, "ofd_privacy", True)
+        replies = await self.run_command(settings_command, make_user(), "/settings")
+        self.assertIn("Federation (OFD): <b>on</b> (/ofd)", replies[0])
+        self.assertIn("Federation privacy mode: <b>on</b> (/ofd_privacy)", replies[0])
 
 
 class ScanCommandTest(DatabaseTestCase):

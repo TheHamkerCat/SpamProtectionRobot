@@ -33,6 +33,9 @@ class Settings:
     # Megabytes for spam results kept in memory / in Postgres, 0 = off
     spam_memory_cache_mb: int
     spam_disk_cache_mb: int
+    # Open Federated Database
+    ofd_host: Optional[str] = None
+    ofd_token: Optional[str] = None
 
 
 class _SettingsReader:
@@ -49,6 +52,10 @@ class _SettingsReader:
             return value
         self.errors.append(f"{name} is missing. {hint}")
         return None
+
+    def optional_text(self, name: str) -> Optional[str]:
+        """A setting that may be left out, blank counts as left out"""
+        return self.env.get(name, "").strip() or None
 
     def number(self, name: str, hint: str) -> Optional[int]:
         value = self.text(name, hint)
@@ -112,6 +119,17 @@ def load_settings(env: Mapping[str, str] = os.environ) -> Settings:
     if arq_api_url and not arq_api_url.startswith(URL_PREFIXES):
         read.errors.append(f"ARQ_API_URL must start with https://. {COPY_FROM_EXAMPLE}")
 
+    ofd_host = read.optional_text("OFD_HOST")
+    if ofd_host and not ofd_host.startswith(URL_PREFIXES):
+        read.errors.append(
+            "OFD_HOST must start with https://, e.g. https://federation.example.com. "
+            "Leave it out to run without Federation."
+        )
+    ofd_token = read.optional_text("OFD_TOKEN")
+    if ofd_token and not ofd_host:
+        # Never echo the token itself, it is a secret
+        read.errors.append("OFD_TOKEN is set but OFD_HOST is missing. Set OFD_HOST too.")
+
     channel_hint = (
         "Use the channel ID, e.g. -1001234567890, "
         "and add the bot to that channel as an admin."
@@ -132,6 +150,8 @@ def load_settings(env: Mapping[str, str] = os.environ) -> Settings:
         arq_api_url=arq_api_url,
         spam_memory_cache_mb=read.megabytes("SPAM_MEMORY_CACHE_MB", COPY_FROM_EXAMPLE),
         spam_disk_cache_mb=read.megabytes("SPAM_DISK_CACHE_MB", COPY_FROM_EXAMPLE),
+        ofd_host=ofd_host,
+        ofd_token=ofd_token,
     )
 
     if read.errors:

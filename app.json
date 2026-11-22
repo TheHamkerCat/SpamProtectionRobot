@@ -63,6 +63,14 @@
             "description": "Megabytes of the database for spam scan results of short messages. 0 turns it off. The essential-0 Heroku Postgres plan has about 1 GB in total: use 512 or less there.",
             "value": "4096",
             "required": true
+        },
+        "OFD_HOST": {
+            "description": "Optional: address of a Federation (OFD) server, e.g. https://federation.example.com. Leave it empty to run without Federation.",
+            "required": false
+        },
+        "OFD_TOKEN": {
+            "description": "Optional: operator access token for OFD_HOST. With it the bot also adds the senders it sees to the Federation database.",
+            "required": false
         }
     }
 }

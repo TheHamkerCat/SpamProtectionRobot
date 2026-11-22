@@ -4,18 +4,28 @@ The handler only queues the message (client.message_queue). Workers run
 check_message(), so only a fixed number of checks run at a time.
 
 Sudo users, admins, anonymous admins and the group's linked channel are
-never punished. Senders posting as a channel are checked like users."""
+never punished. Senders posting as a channel are checked like users.
+
+With Federation (OFD_HOST, chat setting /ofd), senders are also looked up
+there and spam texts scanned there too, next to ARQ (spr/ofd.py)."""
+import asyncio
 import logging
 import random
 import re
 
+from pyfederation.enums import SuggestedAction
+from pyfederation.records import ContentInput
 from telethon import events
 from telethon.errors import RPCError
 
 from spr.arq import ArqError
+from spr.core.entities import get_username
 from spr.core.text import plain_letters
 from spr.db import SPAM_HISTORY_SIZE
-from spr.utils.alerts import handle_blacklisted_sender, handle_nsfw, handle_spam
+from spr.ofd import OfdError, entity_address
+from spr.utils.alerts import (blocks_sender, handle_blacklisted_sender,
+                              handle_federation_blocked_sender,
+                              handle_federation_spam, handle_nsfw, handle_spam)
 from spr.utils.media import download_for_scan, get_media, get_media_id
 
 logger = logging.getLogger(__name__)
@@ -91,14 +101,9 @@ async def scan_nsfw(event, sender, alerts: bool) -> bool:
     return True
 
 
-async def scan_spam(event, sender, stats, punish: bool, alerts: bool):
-    """Score the text of a message. Every sender's score is stored, for
-    the trust value; only senders that may be punished get deleted."""
+async def scan_arq(event, text: str):
+    """ARQ's (result, model) for a text, None if the scan failed"""
     client = event.client
-    # Links and words written in look-alike letters are found too
-    text = plain_letters(event.raw_text or "")
-    if not text or not should_scan_text(text, stats):
-        return
     # Repeated texts (spam raids, common short messages) are scanned once
     try:
         model = await client.arq.spam_model()
@@ -108,10 +113,91 @@ async def scan_spam(event, sender, stats, punish: bool, alerts: bool):
             model = await client.arq.spam_model(result.model_version)
     except ArqError as error:
         logger.warning("Spam scan failed in %s: %s", event.chat_id, error)
+        return None
+    return result, model
+
+
+def federation_scan_input(event, sender, text: str, privacy: bool):
+    """(ContentInput, author address) to scan a message with Federation.
+    Privacy mode: the text alone, without its author or any details."""
+    if privacy:
+        return ContentInput(text_content=text), None
+    message = event.message
+    metadata = {
+        "chat_id": event.chat_id,
+        "message_id": event.id,
+        "author_id": event.sender_id,
+        "author_username": get_username(sender),
+        "has_media": get_media(message) is not None,
+        "has_link": has_link(text),
+    }
+    if message.date is not None:
+        metadata["sent_at"] = int(message.date.timestamp())
+    content = ContentInput(
+        text_content=text,
+        note=f"Telegram message {event.id} in chat {event.chat_id}",
+        tag="telegram_message",
+        metadata={key: value for key, value in metadata.items() if value is not None},
+    )
+    return content, entity_address(event.sender_id)
+
+
+async def scan_federation(event, sender, text: str, privacy: bool):
+    """Federation's ScannedContent for a message, None if the scan failed"""
+    content, author = federation_scan_input(event, sender, text, privacy)
+    try:
+        return await event.client.ofd.scan(content, author)
+    except OfdError as error:
+        logger.warning("Federation scan failed in %s: %s", event.chat_id, error)
+        return None
+
+
+async def scan_spam(
+    event, sender, stats, punish: bool, alerts: bool, federation: bool = False, privacy: bool = False
+):
+    """Score the text of a message. Every sender's score is stored, for
+    the trust value; only senders that may be punished get deleted.
+
+    federation: also scan with Federation (only texts that may be punished,
+    nothing is sent for the others), at the same time as ARQ. privacy: the
+    chat's /ofd_privacy setting."""
+    client = event.client
+    # Links and words written in look-alike letters are found too
+    text = plain_letters(event.raw_text or "")
+    if not text or not should_scan_text(text, stats):
         return
-    await client.db.add_spam_prediction(event.sender_id, result.spam)
-    if punish and result.spam > model.spam_above:
-        await handle_spam(event, sender, result, alerts=alerts)
+    if federation and punish and client.ofd.can_scan:
+        if not privacy:
+            await client.ofd.publish_sender(sender)
+        arq, scanned = await asyncio.gather(
+            scan_arq(event, text), scan_federation(event, sender, text, privacy)
+        )
+    else:
+        arq, scanned = await scan_arq(event, text), None
+
+    if arq is not None:
+        result, model = arq
+        await client.db.add_spam_prediction(event.sender_id, result.spam)
+        if punish and result.spam > model.spam_above:
+            return await handle_spam(event, sender, result, alerts=alerts)
+    if punish and scanned is not None and scanned.suggested_action is SuggestedAction.BLOCK_CONTENT:
+        await handle_federation_spam(event, sender, scanned, alerts=alerts)
+
+
+async def check_federation_sender(event, sender, stats, alerts: bool) -> bool:
+    """Look the sender up on Federation. True if Federation suggests
+    blocking them and they were handled."""
+    if not event.client.ofd.can_query:
+        return False
+    try:
+        query = await event.client.ofd.query_sender(event.sender_id)
+    except OfdError as error:
+        logger.warning("Federation lookup failed in %s: %s", event.chat_id, error)
+        return False
+    if not blocks_sender(query):
+        return False
+    await handle_federation_blocked_sender(event, sender, stats, query, alerts=alerts)
+    return True
 
 
 async def check_message(event):
@@ -127,6 +213,8 @@ async def check_message(event):
         return
     # Marked ID: channels are "-100...", so they never clash with user IDs
     sender_id = event.sender_id
+    if sender_id in client.settings.sudoers:
+        return
     try:
         privileged = await client.admins.is_privileged(chat_id, sender_id)
     except RPCError as error:
@@ -137,9 +225,23 @@ async def check_message(event):
     stats = await client.db.get_user_stats(sender_id)
     # Off: punish without posting about it in the chat
     alerts = chat_settings.alerts_enabled
+    federation = (
+        not event.is_private
+        and event.is_group
+        and client.ofd is not None
+        and chat_settings.ofd_enabled
+    )
+    if federation:
+        chat = await event.get_chat()
+        federation = bool(chat and get_username(chat))
+    privacy = chat_settings.ofd_privacy
     if not privileged:
         if stats.blacklisted:
             return await handle_blacklisted_sender(event, sender, stats, alerts=alerts)
+        # Privacy mode still looks senders up: it publishes nothing, but
+        # blacklisted senders are still kept out
+        if federation and await check_federation_sender(event, sender, stats, alerts):
+            return
         if chat_settings.nsfw_enabled and await scan_nsfw(event, sender, alerts):
             return
 
@@ -149,4 +251,6 @@ async def check_message(event):
         stats,
         punish=chat_settings.spam_enabled and not privileged,
         alerts=alerts,
+        federation=federation,
+        privacy=privacy,
     )

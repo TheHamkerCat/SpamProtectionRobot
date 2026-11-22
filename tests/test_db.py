@@ -67,6 +67,14 @@ class DatabaseTest(DatabaseTestCase):
         self.assertTrue(settings.alerts_enabled)
         self.assertTrue(await self.db.set_chat_feature(-1001, "alerts", False))
         self.assertFalse((await self.db.get_chat_settings(-1001)).alerts_enabled)
+        # Federation is on and privacy mode on unless a group changes them
+        self.assertTrue(settings.ofd_enabled)
+        self.assertTrue(settings.ofd_privacy)
+        self.assertTrue(await self.db.set_chat_feature(-1001, "ofd", False))
+        self.assertTrue(await self.db.set_chat_feature(-1001, "ofd_privacy", False))
+        settings = await self.db.get_chat_settings(-1001)
+        self.assertFalse(settings.ofd_enabled)
+        self.assertFalse(settings.ofd_privacy)
 
     async def test_votes(self):
         self.assertTrue(await self.db.add_vote(10, 1, 1, True))

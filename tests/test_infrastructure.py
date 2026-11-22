@@ -51,6 +51,19 @@ class AsyncLruCacheTest(unittest.IsolatedAsyncioTestCase):
             await cache.get("key", fail)
         self.assertEqual(await cache.get("key", succeed), "ok")
 
+    async def test_stale_entries_are_recomputed(self):
+        cache = AsyncLruCache(10, max_age=0.05)
+        calls = []
+
+        async def compute():
+            calls.append(1)
+            return len(calls)
+
+        self.assertEqual(await cache.get("k", compute), 1)
+        self.assertEqual(await cache.get("k", compute), 1)
+        await asyncio.sleep(0.06)
+        self.assertEqual(await cache.get("k", compute), 2)
+
 
 class RateLimiterTest(unittest.IsolatedAsyncioTestCase):
     async def test_calls_are_spaced(self):

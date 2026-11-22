@@ -1,6 +1,8 @@
 from spr.modules.info import NOT_FOUND_TEXT, get_info, info_func
+from spr.ofd import OfdError
 from tests.fakes import (SUPERGROUP_ID, USER_ID, DatabaseTestCase, FakeClient,
-                         FakeMessageEvent, make_channel, make_user)
+                         FakeMessageEvent, FakeOfd, federation_query,
+                         make_channel, make_user)
 
 
 class InfoTest(DatabaseTestCase):
@@ -17,12 +19,27 @@ class InfoTest(DatabaseTestCase):
         self.assertIn("<b>Trust:</b> 100", info)
         self.assertEqual(await self.count("users"), 0)
 
+    async def test_federation_line(self):
+        info = await get_info(self.client, str(USER_ID))
+        self.assertNotIn("Federation", info)
+        self.client.ofd = FakeOfd()
+        self.assertIn("<b>Federation:</b> no record", await get_info(self.client, str(USER_ID)))
+        self.client.ofd = FakeOfd(query=federation_query("PERMANENTLY_BLOCK_ENTITY"))
+        info = await get_info(self.client, str(USER_ID))
+        self.assertIn("<b>Federation:</b> PERMANENTLY_BLOCK_ENTITY", info)
+        self.client.ofd = FakeOfd(error=OfdError("down"))
+        self.assertIn("<b>Federation:</b> unavailable", await get_info(self.client, str(USER_ID)))
+
     async def test_chat_info(self):
         await self.db.blacklist("chat", SUPERGROUP_ID, "<i>reason</i>")
         info = await get_info(self.client, "somegroup")
         self.assertIn("<b>Type:</b> supergroup", info)
         self.assertIn("<b>Members:</b> 42", info)
         self.assertIn("&lt;i&gt;reason&lt;/i&gt;", info)
+        self.assertNotIn("Federation", info)
+        self.client.ofd = FakeOfd()
+        info = await get_info(self.client, "somegroup")
+        self.assertIn("<b>Federation:</b> no record", info)
 
     async def test_unknown(self):
         self.assertIsNone(await get_info(self.client, "nobody"))

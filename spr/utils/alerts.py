@@ -4,6 +4,11 @@ client.reports (spr/reports.py) and are sent combined.
 
 alerts=False (the chat's /alerts setting) leaves out the alerts in the
 chat; notices about missing admin rights and the log channels stay."""
+import time
+from datetime import datetime, timezone
+from typing import Optional
+
+from pyfederation.enums import SuggestedAction
 from telethon import utils
 from telethon.errors import (ChatAdminRequiredError, MessageDeleteForbiddenError,
                              UserAdminInvalidError)
@@ -62,14 +67,17 @@ async def delete_message(event) -> bool:
     return sum(result.pts_count for result in results) > 0
 
 
-async def ban_sender(event, sender) -> bool:
-    """Ban the sender from the chat. False if the bot lacks the rights."""
+async def ban_sender(event, sender, until: Optional[datetime] = None) -> bool:
+    """Ban the sender from the chat, until a time or for good.
+    False if the bot lacks the rights."""
     client = event.client
     input_chat = await event.get_input_chat()
     try:
         if isinstance(input_chat, types.InputPeerChat):
             # Basic groups have no ban list, removing is all there is
             await client.kick_participant(input_chat, sender)
+        elif until is not None:
+            await client.edit_permissions(input_chat, sender, until_date=until, view_messages=False)
         else:
             await client.edit_permissions(input_chat, sender, view_messages=False)
     except NO_RIGHTS_ERRORS:
@@ -133,6 +141,35 @@ async def handle_spam(event, sender, result, alerts: bool = True):
     stats = await client.db.get_user_stats(event.sender_id)
     if not await delete_or_complain(event, sender, stats, "spam"):
         return
+    await report_deleted_spam(event, sender, stats, spam_label(result), f" · spam probability {round(result.spam)} %", alerts)
+
+
+def federation_label(scanned) -> str:
+    """"Federation, malicious · spam, phishing" from a Federation scan"""
+    parts = ["Federation"]
+    if scanned.classification is not None and scanned.classification.classification_flag:
+        parts.append(scanned.classification.classification_flag.value.lower())
+    concerns = sorted({detection.concern.value.lower() for detection in scanned.detections})
+    if concerns:
+        parts.append(", ".join(concerns))
+    return " · ".join(parts)
+
+
+async def handle_federation_spam(event, sender, scanned, alerts: bool = True):
+    """A message Federation suggests blocking (BLOCK_CONTENT).
+    scanned: the pyfederation ScannedContent of the message"""
+    client = event.client
+    stats = await client.db.get_user_stats(event.sender_id)
+    if not await delete_or_complain(event, sender, stats, "spam"):
+        return
+    await report_deleted_spam(
+        event, sender, stats, federation_label(scanned), " · flagged by Federation", alerts
+    )
+
+
+async def report_deleted_spam(event, sender, stats, label: str, alert_detail: str, alerts: bool):
+    """Log report (with vote buttons) and chat alert about a deleted spam message"""
+    client = event.client
     sender_line = format_sender_line(sender, stats)
 
     content = event.raw_text
@@ -141,7 +178,7 @@ async def handle_spam(event, sender, result, alerts: bool = True):
     chat = await event.get_chat()
     url = chat_link(chat)
     log_report = Report(
-        f"<b>SPAM</b> in {mention(chat)} [<code>{event.chat_id}</code>] · {esc(spam_label(result))}\n"
+        f"<b>SPAM</b> in {mention(chat)} [<code>{event.chat_id}</code>] · {esc(label)}\n"
         f"<b>User:</b> {sender_line}\n"
         f"{esc(content)}",
         buttons=lambda number, prefix: spam_vote_row(number, prefix, url),
@@ -152,8 +189,7 @@ async def handle_spam(event, sender, result, alerts: bool = True):
     client.reports.add(
         event.chat_id,
         Report(
-            f"🚨 <b>SPAM ALERT</b> 🚔 Deleted a message from {sender_line}"
-            f" · spam probability {round(result.spam)} %",
+            f"🚨 <b>SPAM ALERT</b> 🚔 Deleted a message from {sender_line}{alert_detail}",
             refers_to=log_report,
         ),
     )
@@ -171,3 +207,66 @@ async def handle_blacklisted_sender(event, sender, stats, alerts: bool = True):
         return
     if alerts:
         notify_chat(event, f"🚨 <b>SPAMMER ALERT</b> 🚔 Banned {sender_line}")
+
+
+def federation_ban_until(query) -> Optional[datetime]:
+    """When a Federation ban ends: None for a permanent one"""
+    if query.suggested_action is SuggestedAction.PERMANENTLY_BLOCK_ENTITY:
+        return None
+    if query.suggested_lift_timestamp is None:
+        return None
+    return datetime.fromtimestamp(query.suggested_lift_timestamp, timezone.utc)
+
+
+def blocks_sender(query) -> bool:
+    """Federation suggests blocking the sender: for good, or for a while
+    when it also says until when (a temporary block without an end is not
+    acted on, there is no telling how long it should last)"""
+    if query is None:
+        return False
+    if query.suggested_action is SuggestedAction.PERMANENTLY_BLOCK_ENTITY:
+        return True
+    # Telegram treats bans shorter than 30 seconds as permanent
+    return (
+        query.suggested_action is SuggestedAction.TEMPORARILY_BLOCK_ENTITY
+        and query.suggested_lift_timestamp is not None
+        and query.suggested_lift_timestamp > time.time() + 30
+    )
+
+
+async def handle_federation_blocked_sender(event, sender, stats, query, alerts: bool = True):
+    """Ban a sender Federation suggests blocking (see blocks_sender), log it
+    and tell the chat. query: the pyfederation EntityQueryResult of the sender"""
+    client = event.client
+    sender_line = format_sender_line(sender, stats)
+    incidents = sorted({record.type.value for record in query.active_blacklists})
+    reason = ", ".join(incidents) or "blocked"
+    until = federation_ban_until(query)
+    if until is None:
+        duration = "permanently"
+    else:
+        duration = f"until {until:%Y-%m-%d %H:%M} UTC"
+
+    if not await ban_sender(event, sender, until):
+        notify_chat(
+            event,
+            f"I can't ban {sender_line}, who is blacklisted on Federation ({esc(reason)}). "
+            "Make me an admin with the Ban users right.",
+        )
+        return
+    await delete_message(event)
+    chat = await event.get_chat()
+    client.reports.add(
+        client.settings.spam_log_channel,
+        Report(
+            f"<b>FEDERATION BAN</b> in {mention(chat)} [<code>{event.chat_id}</code>]"
+            f" · {esc(reason)} · {duration}\n"
+            f"<b>User:</b> {sender_line}"
+        ),
+    )
+    if alerts:
+        notify_chat(
+            event,
+            f"🚨 <b>SPAMMER ALERT</b> 🚔 Banned {sender_line}"
+            f" · blacklisted on Federation ({esc(reason)})",
+        )

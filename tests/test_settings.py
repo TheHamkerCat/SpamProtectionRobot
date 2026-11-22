@@ -25,6 +25,33 @@ class LoadSettingsTest(unittest.TestCase):
         self.assertEqual(settings.arq_api_url, "https://arq.hamker.dev")
         self.assertEqual(settings.nsfw_log_channel, -1001111111111)
 
+    def test_federation_is_off_without_ofd_host(self):
+        settings = load_settings(VALID_ENV)
+        self.assertIsNone(settings.ofd_host)
+        self.assertIsNone(settings.ofd_token)
+        blank = load_settings({**VALID_ENV, "OFD_HOST": " ", "OFD_TOKEN": ""})
+        self.assertIsNone(blank.ofd_host)
+        self.assertIsNone(blank.ofd_token)
+
+    def test_federation_settings(self):
+        settings = load_settings(
+            {**VALID_ENV, "OFD_HOST": "https://federation.example", "OFD_TOKEN": "secret"}
+        )
+        self.assertEqual(settings.ofd_host, "https://federation.example")
+        self.assertEqual(settings.ofd_token, "secret")
+
+    def test_federation_host_must_be_a_url(self):
+        with self.assertRaises(SettingsError) as raised:
+            load_settings({**VALID_ENV, "OFD_HOST": "federation.example"})
+        self.assertIn("OFD_HOST must start with https://", str(raised.exception))
+
+    def test_federation_token_needs_a_host(self):
+        with self.assertRaises(SettingsError) as raised:
+            load_settings({**VALID_ENV, "OFD_TOKEN": "secret-token"})
+        message = str(raised.exception)
+        self.assertIn("OFD_TOKEN is set but OFD_HOST is missing", message)
+        self.assertNotIn("secret-token", message)
+
     def test_all_problems_are_reported_at_once(self):
         with self.assertRaises(SettingsError) as raised:
             load_settings({})

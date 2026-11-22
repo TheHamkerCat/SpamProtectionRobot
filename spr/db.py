@@ -41,6 +41,8 @@ _FEATURE_ATTRIBUTES = {
     "spam": "spam_enabled",
     "nsfw": "nsfw_enabled",
     "alerts": "alerts_enabled",
+    "ofd": "ofd_enabled",
+    "ofd_privacy": "ofd_privacy",
 }
 
 
@@ -81,6 +83,8 @@ class ChatSettings:
     spam_enabled: bool = True
     nsfw_enabled: bool = True
     alerts_enabled: bool = True
+    ofd_enabled: bool = True
+    ofd_privacy: bool = True
     blacklist_reason: Optional[str] = None
     blacklisted_at: Optional[datetime] = None
 
@@ -211,6 +215,8 @@ class Database:
             spam_enabled=chat.spam_enabled,
             nsfw_enabled=chat.nsfw_enabled,
             alerts_enabled=chat.alerts_enabled,
+            ofd_enabled=chat.ofd_enabled,
+            ofd_privacy=chat.ofd_privacy,
             blacklist_reason=chat.blacklist_reason,
             blacklisted_at=chat.blacklisted_at,
         )
@@ -230,7 +236,7 @@ class Database:
             chat.privileged_ids_at = utc_now()
 
     async def set_chat_feature(self, chat_id: int, feature: str, enabled: bool) -> bool:
-        """Turn "spam"/"nsfw" detection or "alerts" on/off. False if it already was."""
+        """Turn "spam"/"nsfw" detection, "alerts", "ofd" or "ofd_privacy" on/off. False if it already was."""
         attribute = _FEATURE_ATTRIBUTES[feature]
         async with self._sessions.begin() as session:
             chat = await _lock_or_create(session, Chat, chat_id)

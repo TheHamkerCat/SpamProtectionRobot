@@ -6,6 +6,7 @@ from telethon.tl import types
 from spr.core.commands import command, get_args
 from spr.core.entities import get_username, mention
 from spr.core.formatting import esc
+from spr.ofd import OfdError
 
 __MODULE__ = "Info"
 __HELP__ = """
@@ -62,6 +63,23 @@ def blacklist_line(settings_or_stats) -> str:
     )
 
 
+async def federation_line(client, peer_id: int) -> str:
+    """What Federation suggests about a user or chat, "" without OFD_HOST"""
+    if client.ofd is None:
+        return ""
+    if not client.ofd.can_query:
+        return "<b>Federation:</b> lookups need a token on this server\n"
+    try:
+        query = await client.ofd.query_sender(peer_id)
+    except OfdError:
+        return "<b>Federation:</b> unavailable\n"
+    if query is None:
+        return "<b>Federation:</b> no record\n"
+    if query.suggested_action is None:
+        return "<b>Federation:</b> no action suggested\n"
+    return f"<b>Federation:</b> {esc(query.suggested_action.value)}\n"
+
+
 async def get_user_info(client, user) -> str:
     stats = await client.db.get_user_stats(user.id)
     # telegram only tells the DC of users if they have a profile photo
@@ -79,6 +97,7 @@ async def get_user_info(client, user) -> str:
         f"<b>Potential Spammer:</b> {stats.is_potential_spammer}\n"
         f"<b>Blacklisted:</b> {stats.blacklisted}\n"
         f"{blacklist_line(stats)}"
+        f"{await federation_line(client, user.id)}"
     )
 
 
@@ -95,6 +114,7 @@ async def get_chat_info(client, chat) -> str:
         f"<b>Restricted:</b> {bool(getattr(chat, 'restricted', False))}\n"
         f"<b>Blacklisted:</b> {settings.blacklisted}\n"
         f"{blacklist_line(settings)}"
+        f"{await federation_line(client, chat_id)}"
     )
 
 

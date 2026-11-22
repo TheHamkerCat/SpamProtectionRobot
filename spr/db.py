@@ -84,7 +84,7 @@ class ChatSettings:
     nsfw_enabled: bool = True
     alerts_enabled: bool = True
     ofd_enabled: bool = True
-    ofd_privacy: bool = False
+    ofd_privacy: bool = True
     blacklist_reason: Optional[str] = None
     blacklisted_at: Optional[datetime] = None
 

@@ -89,6 +89,7 @@ class WatcherTest(DatabaseTestCase):
 
     async def test_sudo_and_anonymous_admin_are_not_punished(self):
         await self.check(self.event(make_user(SUDO_ID), SPAM_TEXT))
+        self.assertEqual(self.client.arq.nlp_calls, [])
         group_itself = make_channel(SUPERGROUP_ID, megagroup=True)
         await self.check(self.event(group_itself, SPAM_TEXT))
         self.assertEqual(self.client.deleted, [])
@@ -315,6 +316,9 @@ class FederationWatcherTest(DatabaseTestCase):
         ]
 
     def event(self, sender, text="", **kwargs):
+        kwargs.setdefault(
+            "chat", make_channel(SUPERGROUP_ID, title="Group", username="publicgroup", megagroup=True)
+        )
         return FakeMessageEvent(self.client, sender, text, **kwargs)
 
     async def check(self, event):
@@ -323,8 +327,10 @@ class FederationWatcherTest(DatabaseTestCase):
 
     async def test_blocked_sender_is_banned_and_logged(self):
         self.client.ofd.query = PERMANENT_BLOCK
-        await self.check(self.event(make_user(), "hello there everyone"))
+        event = self.event(make_user(), "hello there everyone")
+        await self.check(event)
         self.assertEqual(len(self.client.restricted), 1)
+        self.assertEqual(self.client.deleted, [(SUPERGROUP_ID, [event.id])])
         self.assertNotIn("until_date", self.client.restricted[0][2])
         log = self.client.texts_to(SPAM_LOG)[0]
         self.assertIn("FEDERATION BAN", log)
@@ -338,6 +344,12 @@ class FederationWatcherTest(DatabaseTestCase):
         await self.check(self.event(make_user(), "hello there everyone"))
         until = self.client.restricted[0][2]["until_date"]
         self.assertEqual(int(until.timestamp()), LIFT_AT)
+
+    async def test_temporary_block_with_expired_lift_time_is_not_acted_on(self):
+        self.client.ofd.query = federation_query("TEMPORARILY_BLOCK_ENTITY", lift=1_000_000_000)
+        await self.check(self.event(make_user(), "hello there everyone"))
+        self.assertEqual(self.client.restricted, [])
+        self.assertEqual(self.client.deleted, [])
 
     async def test_temporary_block_without_lift_time_is_not_acted_on(self):
         self.client.ofd.query = federation_query("TEMPORARILY_BLOCK_ENTITY")
@@ -355,9 +367,11 @@ class FederationWatcherTest(DatabaseTestCase):
     async def test_admins_are_never_looked_up_scanned_or_banned(self):
         self.client.ofd.query = PERMANENT_BLOCK
         self.client.ofd.scan_result = federation_scan("BLOCK_CONTENT")
+        self.client.ofd.can_contribute = True
         await self.check(self.event(make_user(ADMIN_ID), SPAM_TEXT))
         self.assertEqual(self.client.ofd.queries, [])
         self.assertEqual(self.client.ofd.scans, [])
+        self.assertEqual(self.client.ofd.published, [])
         self.assertEqual(self.client.restricted, [])
         self.assertEqual(self.client.deleted, [])
 
@@ -383,6 +397,7 @@ class FederationWatcherTest(DatabaseTestCase):
         self.assertIn("crypto_trading", self.client.texts_to(SPAM_LOG)[0])
 
     async def test_scan_carries_author_and_details(self):
+        await self.db.set_chat_feature(SUPERGROUP_ID, "ofd_privacy", False)
         await self.check(self.event(make_user(username="alice"), SPAM_TEXT))
         content, author = self.client.ofd.scans[0]
         self.assertEqual(author, f"{USER_ID}@telegram.org")
@@ -409,6 +424,7 @@ class FederationWatcherTest(DatabaseTestCase):
         self.assertEqual(len(self.client.restricted), 1)
 
     async def test_senders_are_published_only_with_a_contributing_token(self):
+        await self.db.set_chat_feature(SUPERGROUP_ID, "ofd_privacy", False)
         await self.check(self.event(make_user(), SPAM_TEXT))
         self.assertEqual(self.client.ofd.published, [])
         self.client.ofd.can_contribute = True
@@ -449,3 +465,31 @@ class FederationWatcherTest(DatabaseTestCase):
         self.client.ofd.scan_result = federation_scan("BLOCK_CONTENT")
         await self.check(self.event(make_user(), SPAM_TEXT))
         self.assertEqual(len(self.client.deleted), 1)
+
+    async def test_ofd_does_not_run_in_private_chat(self):
+        self.client.ofd.query = PERMANENT_BLOCK
+        self.client.ofd.scan_result = federation_scan("BLOCK_CONTENT")
+        self.client.ofd.can_contribute = True
+        dm_user = make_user(username="alice")
+        event = FakeMessageEvent(
+            self.client, dm_user, SPAM_TEXT, chat_id=USER_ID, is_private=True, chat=dm_user
+        )
+        await self.check(event)
+        self.assertEqual(self.client.ofd.queries, [])
+        self.assertEqual(self.client.ofd.scans, [])
+        self.assertEqual(self.client.ofd.published, [])
+        self.assertEqual(self.client.restricted, [])
+        self.assertEqual(self.client.deleted, [])
+
+    async def test_ofd_does_not_run_in_private_group(self):
+        await self.db.set_chat_feature(SUPERGROUP_ID, "ofd_privacy", False)
+        self.client.ofd.query = PERMANENT_BLOCK
+        self.client.ofd.scan_result = federation_scan("BLOCK_CONTENT")
+        self.client.ofd.can_contribute = True
+        private_group = make_channel(SUPERGROUP_ID, title="Private Group", megagroup=True)
+        await self.check(self.event(make_user(), SPAM_TEXT, chat=private_group))
+        self.assertEqual(self.client.ofd.queries, [])
+        self.assertEqual(self.client.ofd.scans, [])
+        self.assertEqual(self.client.ofd.published, [])
+        self.assertEqual(self.client.restricted, [])
+        self.assertEqual(self.client.deleted, [])

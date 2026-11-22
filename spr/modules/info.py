@@ -114,6 +114,7 @@ async def get_chat_info(client, chat) -> str:
         f"<b>Restricted:</b> {bool(getattr(chat, 'restricted', False))}\n"
         f"<b>Blacklisted:</b> {settings.blacklisted}\n"
         f"{blacklist_line(settings)}"
+        f"{await federation_line(client, chat_id)}"
     )
 
 

@@ -167,6 +167,8 @@ async def scan_spam(
     if not text or not should_scan_text(text, stats):
         return
     if federation and punish and client.ofd.can_scan:
+        if not privacy:
+            await client.ofd.publish_sender(sender)
         arq, scanned = await asyncio.gather(
             scan_arq(event, text), scan_federation(event, sender, text, privacy)
         )
@@ -211,6 +213,8 @@ async def check_message(event):
         return
     # Marked ID: channels are "-100...", so they never clash with user IDs
     sender_id = event.sender_id
+    if sender_id in client.settings.sudoers:
+        return
     try:
         privileged = await client.admins.is_privileged(chat_id, sender_id)
     except RPCError as error:
@@ -221,12 +225,16 @@ async def check_message(event):
     stats = await client.db.get_user_stats(sender_id)
     # Off: punish without posting about it in the chat
     alerts = chat_settings.alerts_enabled
-    federation = client.ofd is not None and chat_settings.ofd_enabled
+    federation = (
+        not event.is_private
+        and event.is_group
+        and client.ofd is not None
+        and chat_settings.ofd_enabled
+    )
+    if federation:
+        chat = await event.get_chat()
+        federation = bool(chat and get_username(chat))
     privacy = chat_settings.ofd_privacy
-    if federation and not privacy:
-        # Only with a token that may contribute; once an hour per sender at most.
-        # First, so the scan below can name the sender as its author.
-        await client.ofd.publish_sender(sender)
     if not privileged:
         if stats.blacklisted:
             return await handle_blacklisted_sender(event, sender, stats, alerts=alerts)

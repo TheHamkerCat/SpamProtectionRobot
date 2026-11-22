@@ -4,6 +4,7 @@ client.reports (spr/reports.py) and are sent combined.
 
 alerts=False (the chat's /alerts setting) leaves out the alerts in the
 chat; notices about missing admin rights and the log channels stay."""
+import time
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -212,6 +213,8 @@ def federation_ban_until(query) -> Optional[datetime]:
     """When a Federation ban ends: None for a permanent one"""
     if query.suggested_action is SuggestedAction.PERMANENTLY_BLOCK_ENTITY:
         return None
+    if query.suggested_lift_timestamp is None:
+        return None
     return datetime.fromtimestamp(query.suggested_lift_timestamp, timezone.utc)
 
 
@@ -223,9 +226,11 @@ def blocks_sender(query) -> bool:
         return False
     if query.suggested_action is SuggestedAction.PERMANENTLY_BLOCK_ENTITY:
         return True
+    # Telegram treats bans shorter than 30 seconds as permanent
     return (
         query.suggested_action is SuggestedAction.TEMPORARILY_BLOCK_ENTITY
         and query.suggested_lift_timestamp is not None
+        and query.suggested_lift_timestamp > time.time() + 30
     )
 
 
@@ -249,6 +254,7 @@ async def handle_federation_blocked_sender(event, sender, stats, query, alerts: 
             "Make me an admin with the Ban users right.",
         )
         return
+    await delete_message(event)
     chat = await event.get_chat()
     client.reports.add(
         client.settings.spam_log_channel,

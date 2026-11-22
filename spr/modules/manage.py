@@ -6,6 +6,7 @@ from telethon.errors import RPCError
 
 from spr.arq import ArqError
 from spr.core.commands import command, get_args
+from spr.core.entities import get_username
 from spr.core.formatting import esc
 from spr.core.text import plain_letters
 from spr.utils.media import download_for_scan, get_media
@@ -15,8 +16,8 @@ __HELP__ = """
 /anti_nsfw [ENABLE|DISABLE] - Enable or disable NSFW Detection.
 /anti_spam [ENABLE|DISABLE] - Enable or disable Spam Detection.
 /alerts [ENABLE|DISABLE] - Post a message in the chat when I delete spam or NSFW media or ban a spammer. On by default.
-/ofd [ENABLE|DISABLE] - Check senders and messages with the Federation (OFD) server too, when this bot has one. On by default.
-/ofd_privacy [ENABLE|DISABLE] - Send only the text of messages to Federation, without who sent them, and publish nothing. Senders are still looked up there. Off by default.
+/ofd [ENABLE|DISABLE] - Check senders and messages with the Federation (OFD) server in public groups, when this bot has one. On by default.
+/ofd_privacy [ENABLE|DISABLE] - Send only the text of messages to Federation, without who sent them, and publish nothing. Senders are still looked up there. On by default.
 /settings - Show this chat's settings.
 
 /nsfw_scan - Classify a media.
@@ -64,6 +65,7 @@ FEATURES = {
 # Only there when the host set OFD_HOST
 OFD_FEATURES = ("ofd", "ofd_privacy")
 OFD_NOT_SET_UP = "Federation (OFD) isn't set up on this bot."
+OFD_PUBLIC_ONLY = "Federation (OFD) only works in public groups with a @username."
 
 
 def describe_federation(ofd, settings) -> str:
@@ -114,8 +116,12 @@ async def toggle_feature(event, feature: str):
     if len(args) != 2:
         return await event.reply(f"Usage: /{command_name} [ENABLE|DISABLE]")
     client = event.client
-    if feature in OFD_FEATURES and client.ofd is None:
-        return await event.reply(OFD_NOT_SET_UP)
+    if feature in OFD_FEATURES:
+        if client.ofd is None:
+            return await event.reply(OFD_NOT_SET_UP)
+        chat = await event.get_chat()
+        if event.is_private or not chat or not get_username(chat):
+            return await event.reply(OFD_PUBLIC_ONLY)
     if not await can_manage(event):
         return
 
@@ -177,7 +183,12 @@ async def settings_command(event):
         "ofd": settings.ofd_enabled,
         "ofd_privacy": settings.ofd_privacy,
     }
-    federation = event.client.ofd is not None
+    chat = await event.get_chat()
+    federation = (
+        event.client.ofd is not None
+        and not event.is_private
+        and bool(chat and get_username(chat))
+    )
     lines = [
         f"{details.label}: <b>{on_off(values[feature])}</b> (/{details.command})"
         for feature, details in FEATURES.items()

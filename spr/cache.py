@@ -50,7 +50,10 @@ class AsyncLruCache:
     def _is_stale(self, key) -> bool:
         if self._max_age is None:
             return False
-        return time.monotonic() - self._stored_at[key] >= self._max_age
+        stored_at = self._stored_at.get(key)
+        if stored_at is None:
+            return True
+        return time.monotonic() - stored_at >= self._max_age
 
     def _store(self, key, result):
         self._results[key] = result

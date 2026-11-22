@@ -16,7 +16,7 @@ depends_on = None
 
 def upgrade():
     op.add_column('chats', sa.Column('ofd_enabled', sa.Boolean(), server_default=sa.text('true'), nullable=False))
-    op.add_column('chats', sa.Column('ofd_privacy', sa.Boolean(), server_default=sa.text('false'), nullable=False))
+    op.add_column('chats', sa.Column('ofd_privacy', sa.Boolean(), server_default=sa.text('true'), nullable=False))
 
 
 def downgrade():

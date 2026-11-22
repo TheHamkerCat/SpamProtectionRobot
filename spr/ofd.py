@@ -18,10 +18,10 @@ OFD_TIMEOUT_SECONDS = 30
 ENTITY_HOST = "telegram.org"
 API_MAJOR_VERSION = 2
 # Sender lookups are kept this long, so a raid from one sender costs one lookup
-QUERY_CACHE_SIZE = 20_000
+QUERY_CACHE_SIZE = 2_000
 QUERY_CACHE_SECONDS = 300
 # A published sender is published again after this long at the earliest
-PUBLISHED_CACHE_SIZE = 50_000
+PUBLISHED_CACHE_SIZE = 5_000
 PUBLISHED_CACHE_SECONDS = 3600
 # A token the server could not check yet (unreachable) is checked again after this long
 AUTH_RETRY_SECONDS = 300

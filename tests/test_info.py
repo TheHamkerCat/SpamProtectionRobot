@@ -36,6 +36,10 @@ class InfoTest(DatabaseTestCase):
         self.assertIn("<b>Type:</b> supergroup", info)
         self.assertIn("<b>Members:</b> 42", info)
         self.assertIn("&lt;i&gt;reason&lt;/i&gt;", info)
+        self.assertNotIn("Federation", info)
+        self.client.ofd = FakeOfd()
+        info = await get_info(self.client, "somegroup")
+        self.assertIn("<b>Federation:</b> no record", info)
 
     async def test_unknown(self):
         self.assertIsNone(await get_info(self.client, "nobody"))

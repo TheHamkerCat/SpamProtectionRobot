@@ -59,7 +59,7 @@ class Chat(Base):
     )
     # On: Federation gets only message text, nothing is published (/ofd_privacy)
     ofd_privacy: Mapped[bool] = mapped_column(
-        Boolean, default=False, server_default=text("false")
+        Boolean, default=True, server_default=text("true")
     )
     blacklist_reason: Mapped[Optional[str]] = mapped_column(Text)
     blacklisted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))

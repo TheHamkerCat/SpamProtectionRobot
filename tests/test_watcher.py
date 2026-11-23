@@ -241,6 +241,14 @@ class WatcherTest(DatabaseTestCase):
             await self.check(self.event(make_user(), "𝗷𝗼𝗶𝗻 𝘁.𝗺𝗲/𝗳𝗿𝗲𝗲𝗰𝗼𝗶𝗻𝘀"))
         self.assertEqual(self.client.arq.nlp_calls, ["join t.me/freecoins"])
 
+    async def test_only_links_are_not_judged_by_arq(self):
+        await self.check(self.event(make_user(), "https://www.youtube.com/watch?v=PX7bQRgCxk0"))
+        await self.check(self.event(make_user(), "t.me/somechannel/123 @someone"))
+        self.assertEqual(self.client.arq.nlp_calls, [])
+        self.assertEqual(self.client.deleted, [])
+        # Not counted for the sender's trust either
+        self.assertEqual((await self.db.get_user_stats(USER_ID)).spam_data, ())
+
     async def test_handler_only_queues(self):
         handled = []
 
@@ -465,6 +473,14 @@ class FederationWatcherTest(DatabaseTestCase):
         self.client.ofd.scan_result = federation_scan("BLOCK_CONTENT")
         await self.check(self.event(make_user(), SPAM_TEXT))
         self.assertEqual(len(self.client.deleted), 1)
+
+    async def test_only_links_are_still_scanned_by_federation(self):
+        self.client.arq = FakeArq(spam=SPAM)
+        self.client.ofd.scan_result = federation_scan("BLOCK_CONTENT")
+        await self.check(self.event(make_user(), "https://phish.example/login"))
+        self.assertEqual(self.client.arq.nlp_calls, [])
+        self.assertEqual(len(self.client.deleted), 1)
+        self.assertIn("flagged by Federation", self.client.texts_to(SUPERGROUP_ID)[0])
 
     async def test_ofd_does_not_run_in_private_chat(self):
         self.client.ofd.query = PERMANENT_BLOCK

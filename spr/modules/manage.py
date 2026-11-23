@@ -8,7 +8,7 @@ from spr.arq import ArqError
 from spr.core.commands import command, get_args
 from spr.core.entities import get_username
 from spr.core.formatting import esc
-from spr.core.text import plain_letters
+from spr.core.text import has_words, plain_letters
 from spr.utils.media import download_for_scan, get_media
 
 __MODULE__ = "Manage"
@@ -228,12 +228,16 @@ async def spam_scan_command(event):
         return await event.reply("Reply to a message to scan it.")
     if not reply.raw_text:
         return await event.reply("Can't scan that")
+    text = plain_letters(reply.raw_text)
     try:
-        result = await event.client.arq.nlp(plain_letters(reply.raw_text))
+        result = await event.client.arq.nlp(text)
         model = await event.client.arq.spam_model(result.model_version)
     except ArqError as error:
         return await event.reply(str(error))
     deleted = "yes" if result.spam > model.spam_above else "no"
+    if not has_words(text):
+        # The watcher does not ask ARQ about these (spr/core/text.py)
+        deleted = "no, the message is only links"
     await event.reply(
         f"<b>Spam:</b> <code>{result.spam} %</code> (deleted above {model.spam_above} %: {deleted})\n"
         f"<b>Category:</b> <code>{esc(result.category)}</code>\n"

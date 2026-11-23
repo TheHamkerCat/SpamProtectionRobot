@@ -212,6 +212,12 @@ class ScanCommandTest(DatabaseTestCase):
         for part in ("97.25 %", "deleted above 72.0 %: yes", "crypto_trading", "<code>2</code>", "english", "test-model-1"):
             self.assertIn(part, reply)
 
+    async def test_spam_scan_of_only_links_says_it_is_not_deleted(self):
+        client = FakeClient(db=self.db, arq=FakeArq(spam=spam_result(97.25, "other_spam", 1)))
+        event = FakeMessageEvent(client, make_user(), "/spam_scan", reply_message=make_message("https://youtu.be/x"))
+        await spam_scan_command(event)
+        self.assertIn("deleted above 72.0 %: no, the message is only links", event.reply_texts()[0])
+
     async def test_spam_scan_without_reply(self):
         event = FakeMessageEvent(FakeClient(db=self.db), make_user(), "/spam_scan")
         await spam_scan_command(event)

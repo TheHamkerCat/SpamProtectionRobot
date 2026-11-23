@@ -6,7 +6,7 @@ from spr.core import ikb
 from spr.core.commands import command
 from spr.core.entities import PRIVATE_CHAT_LINK, chat_link, get_username, mention
 from spr.core.formatting import esc
-from spr.core.text import plain_letters
+from spr.core.text import has_words, plain_letters
 from tests.fakes import BOT_USERNAME, make_channel, make_user, setup_bot_username
 
 
@@ -84,3 +84,16 @@ class PlainLettersTest(unittest.TestCase):
     def test_other_scripts_stay_the_same(self):
         for text in ("नमस्ते दोस्तों", "Привет всем", "你好", "hello 👋"):
             self.assertEqual(plain_letters(text), text)
+
+
+class HasWordsTest(unittest.TestCase):
+    def test_only_links_and_usernames(self):
+        for text in ("https://www.youtube.com/watch?v=PX7bQRgCxk0", "t.me/TelethonChat/569774",
+                     "www.example.com", "github.com/LonamiWebs/Telethon", "@someone",
+                     "👇 (https://x.com/a), https://y.com/b 🔥", "https://a.com\nhttps://b.com", ""):
+            self.assertFalse(has_words(text), text)
+
+    def test_words_next_to_links(self):
+        for text in ("join t.me/freecoins", "https://t.me/x isko scam kia jaye?", "dm @crypto_king",
+                     "4khdhub.one", "देखो https://x.com/a", "hi"):
+            self.assertTrue(has_words(text), text)

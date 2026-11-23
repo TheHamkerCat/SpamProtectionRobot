@@ -20,7 +20,7 @@ from telethon.errors import RPCError
 
 from spr.arq import ArqError
 from spr.core.entities import get_username
-from spr.core.text import plain_letters
+from spr.core.text import has_words, plain_letters
 from spr.db import SPAM_HISTORY_SIZE
 from spr.ofd import OfdError, entity_address
 from spr.utils.alerts import (blocks_sender, handle_blacklisted_sender,
@@ -142,6 +142,10 @@ def federation_scan_input(event, sender, text: str, privacy: bool):
     return content, entity_address(event.sender_id)
 
 
+async def no_scan():
+    return None
+
+
 async def scan_federation(event, sender, text: str, privacy: bool):
     """Federation's ScannedContent for a message, None if the scan failed"""
     content, author = federation_scan_input(event, sender, text, privacy)
@@ -166,14 +170,18 @@ async def scan_spam(
     text = plain_letters(event.raw_text or "")
     if not text or not should_scan_text(text, stats):
         return
+    # Only links and @usernames: ARQ's model sees every link as the same
+    # word, so it can't tell a video link from a scam link. Not asked, and
+    # not counted for the sender's trust. Federation still scans it.
+    use_arq = has_words(text)
     if federation and punish and client.ofd.can_scan:
         if not privacy:
             await client.ofd.publish_sender(sender)
         arq, scanned = await asyncio.gather(
-            scan_arq(event, text), scan_federation(event, sender, text, privacy)
+            scan_arq(event, text) if use_arq else no_scan(), scan_federation(event, sender, text, privacy)
         )
     else:
-        arq, scanned = await scan_arq(event, text), None
+        arq, scanned = (await scan_arq(event, text) if use_arq else None), None
 
     if arq is not None:
         result, model = arq

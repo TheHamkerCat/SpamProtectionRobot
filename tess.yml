@@ -2,19 +2,19 @@ machine:
   name: spam-protection-robot
   backend: apple-container
   cpus: 4
-  memory: 4096          # MB; the containers run on the Docker host, not here. Held on the Mac while running
+  memory: 4096          # MB
 
 network:
   nat: true             # full internet: Telethon reaches Telegram over raw TCP, which an allowlist proxy cannot pass
 
 docker-host:
-  ssh: hamker@archlinux.mesh.hamker.dev  # docker in the machine starts the containers there
-  mirror:               # what compose.test.yml bind-mounts, copied there every second
-    - tests             # tests, live and benchmark mount it read-only
-    - spr/migrations    # the alembic service writes new migrations here; they stay on the Docker host
+  ssh: hamker@archlinux.mesh.hamker.dev
+  mirror:
+    - tests
+    - spr/migrations    # files that alembic writes there are deleted on the next copy
 
 provision:
-  - run: apt-get update -q && apt-get install -y -q git curl ca-certificates ripgrep jq tmux neovim htop trash-cli
+  - run: apt-get update -q && apt-get install -y -q git curl ca-certificates unzip ripgrep jq tmux neovim htop trash-cli
   # gh from GitHub's apt repository (Debian's is 2.46); apt upgrade keeps it current
   - run: |
       set -eu
@@ -27,10 +27,10 @@ provision:
 
 agents:
   claude:
-    sessions: share     # this Mac's session folder of the project, used live in the machine
-    after-exit: shell   # Ctrl+C / exit leaves you in the machine's shell (exit again: back here)
-  agy:                  # Antigravity CLI: sign in once inside with tess agy (Google OAuth)
-    after-exit: shell   # its own sandbox stays off (the default): the machine is the sandbox
+    sessions: share
+    after-exit: shell
+  agy:
+    after-exit: shell
 
 apple-container:
   image: debian:13

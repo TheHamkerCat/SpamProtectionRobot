@@ -1,0 +1,36 @@
+machine:
+  name: spam-protection-robot
+  backend: apple-container
+  cpus: 4
+  memory: 4096          # MB; the containers run on the Docker host, not here. Held on the Mac while running
+
+network:
+  nat: true             # full internet: Telethon reaches Telegram over raw TCP, which an allowlist proxy cannot pass
+
+docker-host:
+  ssh: hamker@archlinux.mesh.hamker.dev  # docker in the machine starts the containers there
+  mirror:               # what compose.test.yml bind-mounts, copied there every second
+    - tests             # tests, live and benchmark mount it read-only
+    - spr/migrations    # the alembic service writes new migrations here; they stay on the Docker host
+
+provision:
+  - run: apt-get update -q && apt-get install -y -q git curl ca-certificates ripgrep jq tmux neovim htop trash-cli
+  # gh from GitHub's apt repository (Debian's is 2.46); apt upgrade keeps it current
+  - run: |
+      set -eu
+      key=/etc/apt/keyrings/githubcli-archive-keyring.gpg
+      mkdir -p -m 755 /etc/apt/keyrings
+      curl -fsSL --connect-timeout 15 --retry 3 https://cli.github.com/packages/githubcli-archive-keyring.gpg -o "$key"
+      chmod 644 "$key"
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=$key] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list
+      apt-get update -q && apt-get install -y -q gh
+
+agents:
+  claude:
+    sessions: share     # this Mac's session folder of the project, used live in the machine
+    after-exit: shell   # Ctrl+C / exit leaves you in the machine's shell (exit again: back here)
+  agy:                  # Antigravity CLI: sign in once inside with tess agy (Google OAuth)
+    after-exit: shell   # its own sandbox stays off (the default): the machine is the sandbox
+
+apple-container:
+  image: debian:13

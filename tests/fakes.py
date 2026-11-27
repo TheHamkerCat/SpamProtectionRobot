@@ -59,8 +59,8 @@ def make_settings(**overrides) -> Settings:
     return Settings(**values)
 
 
-def make_user(user_id=USER_ID, first_name="Alice", username=None):
-    return types.User(id=user_id, first_name=first_name, username=username, access_hash=1)
+def make_user(user_id=USER_ID, first_name="Alice", username=None, bot=False):
+    return types.User(id=user_id, first_name=first_name, username=username, access_hash=1, bot=bot)
 
 
 def make_channel(channel_id, title="Some Channel", username=None, megagroup=False):

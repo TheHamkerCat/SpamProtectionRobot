@@ -4,7 +4,8 @@ The handler only queues the message (client.message_queue). Workers run
 check_message(), so only a fixed number of checks run at a time.
 
 Sudo users, admins, anonymous admins and the group's linked channel are
-never punished. Senders posting as a channel are checked like users.
+never punished. Messages from bots are not checked. Senders posting as a
+channel are checked like users.
 
 With Federation (OFD_HOST, chat setting /ofd), senders are also looked up
 there and spam texts scanned there too, next to ARQ (spr/ofd.py)."""
@@ -218,6 +219,9 @@ async def check_message(event):
 
     sender = await event.get_sender()
     if sender is None:
+        return
+    # Bots, for example other moderation bots and their alert posts
+    if getattr(sender, "bot", False):
         return
     # Marked ID: channels are "-100...", so they never clash with user IDs
     sender_id = event.sender_id

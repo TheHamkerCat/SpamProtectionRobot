@@ -94,6 +94,13 @@ class WatcherTest(DatabaseTestCase):
         await self.check(self.event(group_itself, SPAM_TEXT))
         self.assertEqual(self.client.deleted, [])
 
+    async def test_bot_messages_are_not_checked(self):
+        alert = "🚨 SPAM ALERT 🚔 Deleted a message from @someone [123] · trust 8 · spam"
+        await self.check(self.event(make_user(bot=True), alert, media=PHOTO))
+        self.assertEqual((self.client.arq.nlp_calls, self.client.arq.nsfw_calls), ([], []))
+        self.assertEqual(self.client.deleted, [])
+        self.assertEqual(await self.count("users"), 0)
+
     async def test_sending_as_a_channel_does_not_bypass_checks(self):
         own_channel = make_channel(-1007777777777, title="Spam Channel")
         await self.check(self.event(own_channel, SPAM_TEXT))
